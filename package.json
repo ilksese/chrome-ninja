@@ -1,0 +1,63 @@
+{
+  "name": "chrome-ninja",
+  "displayName": "chrome ninja",
+  "description": "something...",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "style": "prettier ./src/**/*.{ts,tsx} --write",
+    "commit": "cz"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
+    "@fontsource/roboto": "^5.1.0",
+    "@ianvs/prettier-plugin-sort-imports": "4.4.0",
+    "@mui/icons-material": "^6.1.7",
+    "@mui/material": "^6.1.7",
+    "clsx": "^2.1.1",
+    "normalize.css": "^8.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "7.53.2",
+    "react-router": "^6.28.0",
+    "react-router-dom": "^6.28.0",
+    "tailwind-merge": "2.5.4",
+    "yup": "1.4.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "2.0.0-beta.28",
+    "@eslint/js": "^9.13.0",
+    "@types/chrome": "^0.0.283",
+    "@types/node": "20.16.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "commitizen": "4.3.1",
+    "cz-conventional-changelog-zh-cn": "0.0.7",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.14",
+    "globals": "^15.11.0",
+    "postcss": "^8.4.49",
+    "prettier": "3.3.3",
+    "prettier-plugin-tailwindcss": "0.6.9",
+    "tailwindcss": "^3.4.15",
+    "typescript": "~5.6.2",
+    "typescript-eslint": "^8.11.0",
+    "vite": "^5.4.10",
+    "vite-plugin-pages": "^0.32.3",
+    "vite-plugin-svgr": "4.3.0"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog-zh-cn"
+    }
+  }
+}
