@@ -1,0 +1,23 @@
+html[data-a-domain|="com-bilibili-www"] {
+  /** 哔哩哔哩首页 **/
+  /* 首页所有非视频卡片 */
+  :is(.feed-card, .bili-video-card, .floor-single-card):not(:has(a[href*="www.bilibili.com/video"])):not(
+      :has(a[href*="live.bilibili.com"])
+    ) {
+    display: none;
+  }
+}
+html[data-a-domain|="com-bilibili-t"] {
+  /** 哔哩哔哩动态 **/
+  /* 动态广告 */
+  :is(.bili-dyn-list__item):has(.bili-dyn-card-goods) {
+    display: none;
+  }
+}
+html[data-a-domain|="com-bilibili-live"] {
+  /** 哔哩哔哩直播间 **/
+  /** 小橙车 **/
+  :is(#shop-popover-vm) {
+    display: none;
+  }
+}
