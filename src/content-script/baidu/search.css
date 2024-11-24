@@ -1,0 +1,40 @@
+/** 主页信息流 **/
+#s_wrap {
+  display: none;
+}
+/** 主页页脚 **/
+#bottom_layer {
+  display: none;
+}
+/** 热搜 **/
+#content_right {
+  display: none;
+}
+/** 底部相关搜索 **/
+.result-molecule:has(#rs_new) {
+  display: none;
+}
+#content_left {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1ch;
+  & > div:not([tpl="se_com_default"]):not([tpl="sg_kg_entity_san"]):not([tpl="bk_polysemy"]),
+  & > div:not([mu]) {
+    display: none;
+  }
+  & > div {
+    box-sizing: content-box;
+    border: 1px solid #999;
+    padding: 1em;
+    border-radius: 16px;
+    cursor: pointer;
+    overflow: hidden;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
+    &:hover {
+      background: skyblue;
+    }
+    .cu-border {
+      box-shadow: none;
+    }
+  }
+}

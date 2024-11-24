@@ -1,4 +1,6 @@
 import type { SettingFormData } from "@/pages/Settings"
+import { handler as baiduHandler } from "./baidu"
+import { handler as biliHandler } from "./bilibili"
 
 console.log("content-script: chrome-ninja is runing")
 
@@ -22,59 +24,34 @@ function injectJS(name: string, base: string = CONTENT_SCRIPT_PATH) {
   const url = new URL(name, base)
   const script = document.createElement("script")
   script.type = "module"
-  script.src = chrome.runtime.getURL(url.pathname)
+  script.src = chrome.runtime.getURL(url.pathname + ".js")
   // @ts-ignore
   script.crossorigin = true
   script.defer = true
-  document.head.appendChild(script)
+  document.querySelector("html")?.append(script)
 }
 
 function injectCSS(name: string, base: string = CONTENT_SCRIPT_PATH) {
   const url = new URL(name, base)
   const style = document.createElement("link")
   style.rel = "stylesheet"
-  style.href = chrome.runtime.getURL(url.pathname)
-  document.head.appendChild(style)
+  style.href = chrome.runtime.getURL(url.pathname + ".css")
+  document.querySelector("html")?.append(style)
+}
+
+export interface IContentScriptAPI {
+  injectJS: typeof injectJS
+  injectCSS: typeof injectCSS
 }
 
 const main = async () => {
   const options: SettingFormData = (await chrome.storage.local.get(["options"])).options
-  const bilibiliHandler = {
-    test: function () {
-      return location.host.endsWith("bilibili.com")
-    },
-    /**是否在直播间 */
-    inLiveRoom: function () {
-      return location.host.startsWith("live")
-    },
-    /**
-     * 切换画质到已有最高
-     */
-    switchQuality: function () {
-      if (this.inLiveRoom()) {
-        injectJS("bilibili/index.js")
-      }
-    },
-    /**
-     * css去广告
-     */
-    blockAD: function () {
-      injectJS("bilibili/@document-polyfill.js")
-      injectCSS("bilibili/blockAD.css")
-    },
-    exec: function () {
-      if (options?.bilibili?.enabled) {
-        this.switchQuality()
-      }
-      if (options?.bilibili?.blockAD) {
-        this.blockAD()
-      }
-    }
-  }
-  const matcher = [bilibiliHandler]
+  const matcher = [biliHandler, baiduHandler]
   for (const handler of matcher) {
-    if (handler.test()) {
-      handler.exec()
+    // @ts-ignore
+    const h = handler(options[handler.optionName], { injectCSS, injectJS })
+    if (h.test()) {
+      h.exec()
       break
     }
   }

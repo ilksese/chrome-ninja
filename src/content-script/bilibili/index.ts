@@ -1,16 +1,44 @@
-let maxRunTime = 20
-let timer = setInterval(() => {
-  if (maxRunTime-- == 0) return window.clearInterval(timer)
-  // @ts-ignore
-  let livePlayer = window.livePlayer
-  const playerInfo = livePlayer?.getPlayerInfo() || {}
-  const { qualityCandidates, liveStatus, playingStatus } = playerInfo
-  if (liveStatus && playingStatus && Array.isArray(qualityCandidates)) {
-    window.clearInterval(timer)
-    window.setTimeout(() => {
-      livePlayer?.switchQuality(qualityCandidates[0]?.qn)
-    }, 2000)
-  }
-}, 300)
+import type { BilibiliSettingType } from "@components/settings/BilibiliSetting"
+import type { IContentScriptAPI } from "../index"
 
-export {}
+export function handler(options: BilibiliSettingType | null, api: IContentScriptAPI) {
+  const { injectCSS, injectJS } = api
+  const bilibiliHandler = {
+    test: function () {
+      return location.host.endsWith("bilibili.com")
+    },
+    /**是否在直播间 */
+    inLiveRoom: function () {
+      return location.host.startsWith("live")
+    },
+    /**在视频播放页 */
+    inVideo: function () {
+      return location.pathname.startsWith("/video/BV")
+    },
+    /**
+     * 切换画质到已有最高
+     */
+    switchQuality: function () {
+      if (this.inLiveRoom() || this.inVideo()) {
+        injectJS("bilibili/switchQuality")
+      }
+    },
+    /**
+     * css去广告
+     */
+    blockAD: function () {
+      injectJS("common/@document-polyfill")
+      injectCSS("bilibili/blockAD")
+    },
+    exec: function () {
+      if (options?.enabled) {
+        this.switchQuality()
+      }
+      if (options?.blockAD) {
+        this.blockAD()
+      }
+    }
+  }
+  return bilibiliHandler
+}
+handler.optionName = "bilibili"
