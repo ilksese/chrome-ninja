@@ -1,3 +1,4 @@
+import { Suspense, useEffect } from "react"
 import BaiduSetting from "@components/settings/BiaduSetting"
 import BilibiliSetting from "@components/settings/BilibiliSetting"
 import { useYupValidationResolver } from "@hooks"
@@ -5,11 +6,12 @@ import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
 import * as yup from "yup"
 import { Button, List, ListSubheader } from "@mui/material"
+import { DEFAULT_OPTIONS } from "@/constant"
 import { optionsAtom } from "@/store/options"
 
 const validationSchema = yup.object<ChromeNinja.Options>({})
 
-export default function Settings() {
+function Settings() {
   const [options, setOptions] = useAtom(optionsAtom)
   const resolver = useYupValidationResolver(validationSchema)
   const methods = useForm<ChromeNinja.Options>({
@@ -20,6 +22,9 @@ export default function Settings() {
   const doSubmit = methods.handleSubmit((options) => {
     setOptions(options)
   })
+  useEffect(() => {
+    methods.reset(options, { keepDefaultValues: true })
+  }, [options])
   return (
     <FormProvider {...methods}>
       <form id="Setting" name="Setting" action="" onSubmit={doSubmit}>
@@ -34,8 +39,7 @@ export default function Settings() {
           fullWidth
           type="button"
           onClick={() => {
-            methods.reset()
-            chrome.storage?.local.clear()
+            methods.reset(DEFAULT_OPTIONS)
           }}
           variant="contained"
           className="mt-4">
@@ -43,5 +47,13 @@ export default function Settings() {
         </Button>
       </form>
     </FormProvider>
+  )
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<p>loading...</p>}>
+      <Settings />
+    </Suspense>
   )
 }
