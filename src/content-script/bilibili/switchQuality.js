@@ -9,12 +9,6 @@ let timer = setInterval(async () => {
     })
     return
   }
-
-  if (videoPlayer?.getQuality?.()?.realQ !== 116) {
-    videoPlayer.requestQuality?.(116).catch(() => {
-      videoPlayer.setVipQuality?.()
-    })
-  }
   let livePlayer = window.livePlayer
   if (!livePlayer) {
     return
@@ -28,4 +22,3 @@ let timer = setInterval(async () => {
     }, 2000)
   }
 }, 300)
-console.log("[chrome-ninja]: switchQuality")
