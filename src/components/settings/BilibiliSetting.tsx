@@ -1,18 +1,11 @@
-import type { SettingFormData } from "@/pages/Settings"
 import { useState } from "react"
 import SvgBiliBili from "@assets/svg/bilibili.svg?react"
 import { useFormContext } from "react-hook-form"
 import { Api, Block, ExpandLess, ExpandMore, Notifications } from "@mui/icons-material"
 import { Collapse, List, ListItemButton, ListItemIcon, ListItemText, Switch } from "@mui/material"
 
-export type BilibiliSettingType = {
-  enabled: boolean
-  notify: boolean
-  blockAD: boolean
-}
-
 function BilibiliSetting() {
-  const { register, watch } = useFormContext<SettingFormData>()
+  const { register, watch } = useFormContext<ChromeNinja.Options>()
   const [open, setOpen] = useState(true)
   const { enabled, notify, blockAD } = watch("bilibili")
   return (
@@ -44,7 +37,7 @@ function BilibiliSetting() {
             <ListItemIcon>
               <Block />
             </ListItemIcon>
-            <ListItemText primary="CSS去除广告" />
+            <ListItemText primary="过滤广告内容" />
             <Switch {...register("bilibili.blockAD")} checked={blockAD} />
           </ListItemButton>
         </List>

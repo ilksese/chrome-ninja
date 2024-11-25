@@ -1,16 +1,11 @@
-import type { SettingFormData } from "@/pages/Settings"
 import { useState } from "react"
 import SvgBaidu from "@assets/svg/baidu.svg?react"
 import { useFormContext } from "react-hook-form"
 import { Api, ExpandLess, ExpandMore } from "@mui/icons-material"
 import { Collapse, List, ListItemButton, ListItemIcon, ListItemText, Switch } from "@mui/material"
 
-export type BaiduSettingType = {
-  clearSearch: boolean
-}
-
 function BaiduSetting() {
-  const { register, watch } = useFormContext<SettingFormData>()
+  const { register, watch } = useFormContext<ChromeNinja.Options>()
   const [open, setOpen] = useState(true)
   const baidu = watch("baidu")
   return (

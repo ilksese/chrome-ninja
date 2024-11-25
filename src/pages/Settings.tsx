@@ -1,60 +1,25 @@
-import type { BaiduSettingType } from "@components/settings/BiaduSetting"
-import type { BilibiliSettingType } from "@components/settings/BilibiliSetting"
-import { useEffect } from "react"
 import BaiduSetting from "@components/settings/BiaduSetting"
 import BilibiliSetting from "@components/settings/BilibiliSetting"
 import { useYupValidationResolver } from "@hooks"
+import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
 import * as yup from "yup"
 import { Button, List, ListSubheader } from "@mui/material"
+import { optionsAtom } from "@/store/options"
 
-export type SettingFormData = {
-  bilibili: BilibiliSettingType
-  baidu: BaiduSettingType
-}
+const validationSchema = yup.object<ChromeNinja.Options>({})
 
-const validationSchema = yup.object({
-  bilibili: yup.object({
-    enabled: yup.boolean(),
-    notify: yup.boolean(),
-    blockAD: yup.boolean()
-  })
-})
-
-const _defaultOptions: SettingFormData = {
-  bilibili: {
-    enabled: false,
-    notify: false,
-    blockAD: false
-  },
-  baidu: {
-    clearSearch: true
-  }
-}
-
-function Settings() {
+export default function Settings() {
+  const [options, setOptions] = useAtom(optionsAtom)
   const resolver = useYupValidationResolver(validationSchema)
-  const methods = useForm<SettingFormData>({
+  const methods = useForm<ChromeNinja.Options>({
     resolver,
     mode: "onChange",
-    defaultValues: _defaultOptions
+    defaultValues: options
   })
   const doSubmit = methods.handleSubmit((options) => {
-    console.log("submit", options)
-    chrome.storage?.local.set({ options })
+    setOptions(options)
   })
-  const setValues = (values: any) => {
-    values &&
-      Object.entries(values).forEach(([k, v]) => {
-        methods.setValue(k as any, v)
-      })
-  }
-  useEffect(() => {
-    chrome.storage?.local.get(["options"]).then(({ options }) => {
-      console.log("from storage", options)
-      setValues(options)
-    })
-  }, [])
   return (
     <FormProvider {...methods}>
       <form id="Setting" name="Setting" action="" onSubmit={doSubmit}>
@@ -69,7 +34,7 @@ function Settings() {
           fullWidth
           type="button"
           onClick={() => {
-            setValues(_defaultOptions)
+            methods.reset()
             chrome.storage?.local.clear()
           }}
           variant="contained"
@@ -80,5 +45,3 @@ function Settings() {
     </FormProvider>
   )
 }
-
-export default Settings

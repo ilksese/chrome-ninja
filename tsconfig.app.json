@@ -11,7 +11,8 @@
       "@assets/*": ["./src/assets/*"],
       "@components/*": ["./src/components/*"],
       "@lib/*": ["./src/lib/*"],
-      "@hooks": ["./src/hooks/index.ts"],
+      "@hooks": ["./src/hooks"],
+      "@store": ["./src/store"],
       "@/*": ["./src/*"]
     },
 
