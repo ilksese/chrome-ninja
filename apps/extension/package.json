@@ -13,8 +13,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@chrome-ninja/constants": "workspace:*",
-    "@chrome-ninja/types": "workspace:*",
     "@chrome-ninja/utils": "workspace:*",
     "@base-ui/react": "1.7.0",
     "@hookform/resolvers": "5.8.0",

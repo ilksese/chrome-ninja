@@ -3,9 +3,10 @@ import { useSignal } from "@preact/signals"
 import SvgBiliBili from "@assets/svg/bilibili.svg?react"
 import { useFormContext } from "react-hook-form"
 import SwitchField from "./SwitchField"
+import type { Options } from "@/types"
 
 function BilibiliSetting() {
-  const { watch } = useFormContext<ChromeNinja.Options>()
+  const { watch } = useFormContext<Options>()
   const open = useSignal(true)
   const { enabled, notify, blockAD } = watch("bilibili")
   return (

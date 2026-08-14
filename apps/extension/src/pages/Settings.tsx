@@ -6,8 +6,8 @@ import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 import * as v from "valibot"
-import { DEFAULT_OPTIONS } from "@chrome-ninja/constants"
-import { optionsAtom } from "@/store/options"
+import { optionsAtom, DEFAULT_OPTIONS } from "@/store/options"
+import type { Options } from "@/types"
 
 const validationSchema = v.object({
   bilibili: v.object({
@@ -22,7 +22,7 @@ const validationSchema = v.object({
 
 function Settings() {
   const [options, setOptions] = useAtom(optionsAtom)
-  const methods = useForm<ChromeNinja.Options>({
+  const methods = useForm<Options>({
     resolver: valibotResolver(validationSchema),
     mode: "onChange",
     defaultValues: options

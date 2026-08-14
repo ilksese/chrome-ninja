@@ -14,7 +14,7 @@ Chrome MV3 扩展本体，用于增强 Bilibili 和百度的浏览体验。
 
 - Bilibili：自动切换视频/直播画质，可选广告屏蔽。
 - 百度：注入搜索页清爽样式。
-- 默认配置在 `@chrome-ninja/constants`，类型在 `@chrome-ninja/types`。
+- 默认配置在 `src/store/options.ts`，类型在 `src/types.ts`。
 
 ## 命令
 
@@ -41,4 +41,4 @@ pnpm --filter @chrome-ninja/extension build
 - `pnpm install` 会提示这些库缺少 React peer；这是预期状态，不需要装回 `react` / `react-dom`。
 - 注入到页面的 JS/CSS 放在 `src/content-script` 下；`manifest.config.ts` 会扫描该目录并加入 `web_accessible_resources`。
 - Tailwind v4 通过 `@tailwindcss/vite` 接入；`src/index.css` 只导入 theme/utilities，继续跳过 preflight。
-- 修改选项结构时，同步更新 `packages/types`、`packages/constants`、设置 UI 和 content-script handler。
+- 修改选项结构时，同步更新 `src/types.ts`、设置 UI 和 content-script handler。

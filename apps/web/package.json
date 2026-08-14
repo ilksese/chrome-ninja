@@ -12,12 +12,11 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@chrome-ninja/utils": "workspace:*",
     "class-variance-authority": "0.7.1",
-    "clsx": "2.1.1",
     "lucide-preact": "1.31.0",
     "preact": "10.29.8",
-    "@preact/signals": "2.11.1",
-    "tailwind-merge": "3.6.0"
+    "@preact/signals": "2.11.1"
   },
   "devDependencies": {
     "@preact/preset-vite": "2.10.6",

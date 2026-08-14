@@ -1,10 +1,21 @@
 import { atom } from "jotai"
-import { DEFAULT_OPTIONS } from "@chrome-ninja/constants"
+import type { Options } from "@/types"
 
-const optionsCache = atom<ChromeNinja.Options>(DEFAULT_OPTIONS)
+export const DEFAULT_OPTIONS: Options = {
+  bilibili: {
+    enabled: true,
+    blockAD: false,
+    notify: false
+  },
+  baidu: {
+    clearSearch: true
+  }
+}
+
+const optionsCache = atom<Options>(DEFAULT_OPTIONS)
 export const optionsAtom = atom(
   (get) => get(optionsCache),
-  async (_, set, newValue: ChromeNinja.Options) => {
+  async (_, set, newValue: Options) => {
     chrome.storage?.local.set({ options: newValue }, () => {
       set(optionsCache, newValue)
     })
