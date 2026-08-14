@@ -1,0 +1,37 @@
+{
+  "name": "chrome-ninja",
+  "displayName": "chrome ninja",
+  "description": "chrome ninja - a Chrome MV3 extension monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "dev": "pnpm --filter @chrome-ninja/extension dev",
+    "build": "pnpm --filter @chrome-ninja/extension build",
+    "preview": "pnpm --filter @chrome-ninja/extension preview",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "style": "prettier \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\" --write",
+    "commit": "cz"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.15.0",
+    "@ianvs/prettier-plugin-sort-imports": "4.4.0",
+    "commitizen": "4.3.1",
+    "cz-conventional-changelog-zh-cn": "0.0.7",
+    "eslint": "9.15.0",
+    "eslint-plugin-react-hooks": "5.0.0",
+    "eslint-plugin-react-refresh": "0.4.14",
+    "globals": "15.12.0",
+    "prettier": "3.3.3",
+    "prettier-plugin-tailwindcss": "0.6.9",
+    "typescript": "5.6.3",
+    "typescript-eslint": "8.15.0"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog-zh-cn"
+    }
+  }
+}

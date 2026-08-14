@@ -1,0 +1,11 @@
+{
+  "name": "@chrome-ninja/types",
+  "version": "0.1.0",
+  "description": "chrome ninja shared global types",
+  "private": true,
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": "./src/index.d.ts"
+  },
+  "files": ["src"]
+}

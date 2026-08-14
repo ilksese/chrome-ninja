@@ -1,0 +1,33 @@
+import { fileURLToPath, URL } from "node:url"
+import { crx } from "@crxjs/vite-plugin"
+import preact from "@preact/preset-vite"
+import tailwindcss from "@tailwindcss/vite"
+import { defineConfig } from "vite"
+import Pages from "vite-plugin-pages"
+import svgr from "vite-plugin-svgr"
+import manifest from "./manifest.config"
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [
+    preact(),
+    tailwindcss(),
+    Pages({ resolver: "react" }),
+    svgr(),
+    crx({
+      manifest,
+      contentScripts: {
+        injectCss: true
+      }
+    })
+  ],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@assets": fileURLToPath(new URL("src/assets", import.meta.url)),
+      "@components": fileURLToPath(new URL("src/components", import.meta.url)),
+      "@hooks": fileURLToPath(new URL("src/hooks", import.meta.url)),
+      "@store": fileURLToPath(new URL("src/store", import.meta.url)),
+    }
+  }
+})
