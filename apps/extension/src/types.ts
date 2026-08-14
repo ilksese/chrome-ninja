@@ -8,7 +8,10 @@ export type BaiduSettingType = {
   clearSearch: boolean
 }
 
+export type UserAgentType = "default" | "chrome-desktop" | "chrome-android" | "safira-desktop" | "safira-ios"
+
 export type Options = {
   bilibili: BilibiliOptionsType
   baidu: BaiduSettingType
+  userAgent: UserAgentType
 }

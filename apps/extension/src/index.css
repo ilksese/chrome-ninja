@@ -1,14 +1,24 @@
 @layer theme, base, components, utilities;
 
 @import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", Roboto, ui-sans-serif, system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #213547;
-  background-color: #ffffff;
+  color: #101828;
+  background-color: #eef3f8;
+  --ninja-slate: #101828;
+  --ninja-slate-soft: #344054;
+  --ninja-blue: #0077ff;
+  --ninja-blue-soft: #e8f2ff;
+  --ninja-orange: #ff7a3d;
+  --ninja-border: #d8e0ea;
+  --ninja-card: #ffffff;
+  --ninja-radius: 14px;
+  --ninja-shadow: 0 14px 34px rgba(16, 24, 40, 0.12);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -22,33 +32,108 @@
 
 body {
   margin: 0;
-}
-#root {
-  width: 375px;
-  height: 600px;
-  min-width: 0;
-  max-height: 600px;
-  max-width: 375px;
-  overflow: hidden auto;
-  position: static;
-  display: flex;
-  flex-direction: column;
-  user-select: none;
+  background:
+    linear-gradient(120deg, rgba(0, 119, 255, 0.12), transparent 34%),
+    linear-gradient(160deg, #f7faff 0%, #eef3f8 48%, #f8fafc 100%);
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-button {
+button,
+input {
   font: inherit;
 }
 
-a:hover {
-  color: #747bff;
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--ninja-blue);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 119, 255, 0.46) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 119, 255, 0.38);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 91, 209, 0.58);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.ninja-page-enter {
+  animation: ninja-page-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: 50% 24px;
+}
+
+@keyframes ninja-page-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+#root {
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(246, 249, 253, 0.96) 100%);
+}
+
+:root[data-layout="popup"] #root {
+  width: 375px;
+  height: 600px;
+  max-height: 600px;
+  max-width: 375px;
+}
+
+:root[data-layout="options"],
+:root[data-layout="options"] body,
+:root[data-layout="options"] #root {
+  min-width: 720px;
+  min-height: 100vh;
+}
+
+:root[data-layout="options"] #root {
+  width: 100vw;
+  height: 100vh;
+}
+
+@media (max-width: 760px) {
+  :root[data-layout="options"],
+  :root[data-layout="options"] body,
+  :root[data-layout="options"] #root {
+    min-width: 0;
+  }
 }

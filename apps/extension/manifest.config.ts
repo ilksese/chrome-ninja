@@ -42,7 +42,13 @@ export default {
   manifest_version: 3,
   // key: '',
   action: {
-    default_popup: "index.html"
+    default_popup: "index.html",
+    default_icon: {
+      16: "src/assets/xslogo.png",
+      24: "src/assets/smlogo.png",
+      32: "src/assets/mdlogo.png",
+      128: "src/assets/lglogo.png"
+    }
   },
   background: {
     service_worker: "src/background/index.ts",
@@ -62,9 +68,12 @@ export default {
   options_ui: {
     page: "src/options/index.html"
   },
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* https://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*"
+  },
   offline_enabled: true,
-  host_permissions: ["*://*.bilibili.com/*"],
-  permissions: ["storage", "tabs", "background", "scripting", "activeTab"],
+  host_permissions: ["<all_urls>"],
+  permissions: ["storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest"],
   web_accessible_resources: [
     {
       matches: ["*://*/*"],

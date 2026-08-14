@@ -1,6 +1,7 @@
 import { ninjaLog } from "@chrome-ninja/utils"
-import { DEFAULT_OPTIONS } from "@/store/options"
+import { DEFAULT_OPTIONS, mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
+import { applyUserAgentRule } from "@/user-agent"
 
 ninjaLog("background runing")
 
@@ -18,12 +19,32 @@ chrome.runtime.onInstalled.addListener((details) => {
     case chrome.runtime.OnInstalledReason.UPDATE: {
       chrome.storage.local.set(storageCache, () => {
         ninjaLog("初始化设置成功😄")
+        void syncUserAgentRule(storageCache.options)
       })
     }
   }
 })
 
 chrome.runtime.onMessage.addListener(handleMessages)
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.options?.newValue) {
+    void syncUserAgentRule(changes.options.newValue)
+  }
+})
+void syncUserAgentRule()
+
+async function syncUserAgentRule(options?: Partial<Options>) {
+  const nextOptions = options ? mergeOptions(options) : await getStoredOptions()
+  try {
+    await applyUserAgentRule(nextOptions.userAgent)
+  } catch (error) {
+    console.error("Failed to apply User-Agent rule", error)
+  }
+}
+
+async function getStoredOptions() {
+  return await chrome.storage.local.get(["options"]).then(({ options }) => mergeOptions(options))
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleMessages(message: any) {
