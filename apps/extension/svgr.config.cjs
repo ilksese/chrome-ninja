@@ -1,3 +1,4 @@
 module.exports = {
-  icon: true
+  icon: true,
+  jsxRuntime: "automatic"
 }

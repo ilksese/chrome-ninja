@@ -10,8 +10,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
-    "tailwind-merge": "2.5.4"
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.6.0"
   },
   "files": ["src"]
 }

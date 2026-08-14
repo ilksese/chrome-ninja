@@ -1,0 +1,30 @@
+{
+  "name": "@chrome-ninja/web",
+  "version": "0.1.0",
+  "description": "chrome ninja - creative showcase window for the extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-preact": "1.31.0",
+    "preact": "10.29.8",
+    "@preact/signals": "2.11.1",
+    "tailwind-merge": "3.6.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "20.16.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.6.3",
+    "vite": "6.4.3"
+  }
+}

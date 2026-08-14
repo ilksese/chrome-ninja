@@ -1,24 +1,34 @@
-import React from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import HomeIcon from "@mui/icons-material/Home"
-import SettingsIcon from "@mui/icons-material/Settings"
-import { BottomNavigation, BottomNavigationAction } from "@mui/material"
+import { cn } from "@chrome-ninja/utils"
 
 function NavigationBar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const handleChange = (_: React.SyntheticEvent, v: string) => {
-    navigate(v)
-  }
+  const items = [
+    { label: "首页", value: "/home", icon: "H" },
+    { label: "设置", value: "/settings", icon: "S" }
+  ]
+
   return (
-    <BottomNavigation
-      showLabels
-      value={pathname}
-      onChange={handleChange}
-      sx={{ bgcolor: "#FAFBFC", borderTop: "1px solid #eee" }}>
-      <BottomNavigationAction label="首页" value={"/home"} icon={<HomeIcon />} />
-      <BottomNavigationAction label="设置" value={"/settings"} icon={<SettingsIcon />} />
-    </BottomNavigation>
+    <nav className="grid grid-cols-2 border-t border-slate-200 bg-slate-50">
+      {items.map((item) => {
+        const active = pathname === item.value
+        return (
+          <button
+            key={item.value}
+            className={cn(
+              "flex h-14 flex-col items-center justify-center gap-1 text-xs font-medium text-slate-500",
+              active && "text-slate-950"
+            )}
+            type="button"
+            aria-current={active ? "page" : undefined}
+            onClick={() => navigate(item.value)}>
+            <span className="grid size-5 place-items-center rounded bg-current text-[11px] font-semibold text-white">{item.icon}</span>
+            {item.label}
+          </button>
+        )
+      })}
+    </nav>
   )
 }
 

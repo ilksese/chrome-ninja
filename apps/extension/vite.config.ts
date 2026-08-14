@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from "node:url"
 import { crx } from "@crxjs/vite-plugin"
-import react from "@vitejs/plugin-react"
+import preact from "@preact/preset-vite"
+import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "vite"
 import Pages from "vite-plugin-pages"
 import svgr from "vite-plugin-svgr"
@@ -9,8 +10,9 @@ import manifest from "./manifest.config"
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
-    Pages(),
+    preact(),
+    tailwindcss(),
+    Pages({ resolver: "react" }),
     svgr(),
     crx({
       manifest,

@@ -1,43 +1,61 @@
 # chrome-ninja
 
-chrome ninja — 一个基于 **Chrome MV3** 的浏览器扩展，用于增强 bilibili / 百度等网站的浏览体验（自动切换最高画质、去广告、清爽搜索等）。
+chrome ninja 是一个 pnpm workspace monorepo，包含 Chrome MV3 扩展本体和用于介绍扩展的创意橱窗站点。
 
-## 项目结构（Monorepo）
+## 项目结构
 
-采用 **pnpm workspaces** 管理的 monorepo 结构：
-
-```
+```text
 chrome-ninja/
-├── pnpm-workspace.yaml
 ├── apps/
-│   └── extension/           # Chrome 扩展本体（popup / options / background / content-script）
-│       ├── manifest.config.ts
-│       ├── vite.config.ts
-│       └── src/
+│   ├── extension/   # Chrome MV3 扩展：Vite + Preact + preact/compat
+│   └── web/         # 插件介绍站点：Vite + Preact + Tailwind v4
 └── packages/
-    ├── types/               # @chrome-ninja/types     全局 ChromeNinja 命名空间类型
-    ├── constants/           # @chrome-ninja/constants 默认配置常量
-    └── utils/               # @chrome-ninja/utils     cn / ninjaLog / wait 等工具
+    ├── types/       # 全局 ChromeNinja 命名空间类型
+    ├── constants/   # 默认配置常量
+    └── utils/       # 共享小工具
 ```
 
-- **apps/extension** — 可独立构建的扩展应用，通过 Vite + @crxjs/vite-plugin 打包。
-- **packages/\*** — 可复用的共享包，均以源码形式被扩展消费，不单独构建。
+## 快速开始
+
+```bash
+pnpm install
+pnpm dev
+```
+
+根级 `pnpm dev`、`pnpm build`、`pnpm preview` 默认只作用于 `@chrome-ninja/extension`。
+
+extension UI 使用 Preact、`preact/compat` 和 `@preact/preset-vite`；Base UI、`react-router-dom`、`react-hook-form` 通过 compat 继续工作。web 站点本身也是 Preact。
+
+`.npmrc` 关闭了 pnpm 的 peer 自动安装；安装时这些 React 生态库会提示缺少 React peer，这是预期状态，项目不安装 `react` / `react-dom` 运行时。
 
 ## 常用命令
 
 ```bash
-pnpm install          # 安装所有 workspace 依赖
-pnpm dev              # 启动 extension 开发服务（Vite）
-pnpm build            # 构建扩展（tsc + vite build）
-pnpm typecheck        # 自下而上执行各包的 typecheck
-pnpm lint             # ESLint 检查
-pnpm style            # Prettier 格式化
-pnpm commit           # 使用 commitizen 规范提交
+pnpm lint
+pnpm typecheck
+pnpm style
+pnpm commit
 ```
 
-## 技术栈
+按包运行：
 
-- React 18 + TypeScript + Vite
-- @crxjs/vite-plugin（Chrome MV3 打包）
-- Tailwind CSS + MUI（Material UI）
-- jotai（状态管理）+ react-hook-form / yup（表单校验）
+```bash
+pnpm --filter @chrome-ninja/extension dev
+pnpm --filter @chrome-ninja/extension build
+pnpm --filter @chrome-ninja/web dev
+pnpm --filter @chrome-ninja/web build
+```
+
+仓库目前没有配置测试运行器；验证以 `lint`、`typecheck`、按包 `build` 为准。
+
+## 分层文档
+
+- `apps/extension/README.md`：扩展本体入口、构建和加载方式。
+- `apps/web/README.md`：介绍站点结构、开发服务和构建方式。
+- `packages/README.md`：共享包职责和改动联动范围。
+
+## 构建产物
+
+- app 构建产物输出到各自目录下的 `dist`。
+- TypeScript build info 写入 `node_modules/.tmp`。
+- `dist`、`node_modules`、本地浏览器调试产物不应提交。

@@ -1,50 +1,58 @@
-import { Suspense, useEffect } from "react"
+import { Suspense } from "preact/compat"
+import { useEffect } from "preact/hooks"
 import BaiduSetting from "@components/settings/BiaduSetting"
 import BilibiliSetting from "@components/settings/BilibiliSetting"
-import { useYupValidationResolver } from "@hooks"
 import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
-import * as yup from "yup"
-import { Button, List, ListSubheader } from "@mui/material"
+import { valibotResolver } from "@hookform/resolvers/valibot"
+import * as v from "valibot"
 import { DEFAULT_OPTIONS } from "@chrome-ninja/constants"
 import { optionsAtom } from "@/store/options"
 
-const validationSchema = yup.object<ChromeNinja.Options>({})
+const validationSchema = v.object({
+  bilibili: v.object({
+    enabled: v.boolean(),
+    notify: v.boolean(),
+    blockAD: v.boolean()
+  }),
+  baidu: v.object({
+    clearSearch: v.boolean()
+  })
+})
 
 function Settings() {
   const [options, setOptions] = useAtom(optionsAtom)
-  const resolver = useYupValidationResolver(validationSchema)
   const methods = useForm<ChromeNinja.Options>({
-    resolver,
+    resolver: valibotResolver(validationSchema),
     mode: "onChange",
     defaultValues: options
   })
+  const { reset } = methods
   const doSubmit = methods.handleSubmit((options) => {
     setOptions(options)
   })
   useEffect(() => {
-    methods.reset(options, { keepDefaultValues: true })
-  }, [options])
+    reset(options, { keepDefaultValues: true })
+  }, [options, reset])
   return (
     <FormProvider {...methods}>
       <form id="Setting" name="Setting" action="" onSubmit={doSubmit}>
-        <List subheader={<ListSubheader component={"div"}>Settings</ListSubheader>}>
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <h1 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Settings</h1>
           <BilibiliSetting />
           <BaiduSetting />
-        </List>
-        <Button fullWidth type="submit" variant="contained">
+        </section>
+        <button className="mt-4 w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-medium text-white" type="submit">
           保存
-        </Button>
-        <Button
-          fullWidth
+        </button>
+        <button
+          className="mt-3 w-full rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900"
           type="button"
           onClick={() => {
-            methods.reset(DEFAULT_OPTIONS)
-          }}
-          variant="contained"
-          className="mt-4">
+            reset(DEFAULT_OPTIONS)
+          }}>
           重置
-        </Button>
+        </button>
       </form>
     </FormProvider>
   )

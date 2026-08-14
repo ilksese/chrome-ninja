@@ -1,34 +1,28 @@
-import { useState } from "react"
+import { Collapsible } from "@base-ui/react/collapsible"
+import { useSignal } from "@preact/signals"
 import SvgBaidu from "@assets/svg/baidu.svg?react"
 import { useFormContext } from "react-hook-form"
-import { Api, ExpandLess, ExpandMore } from "@mui/icons-material"
-import { Collapse, List, ListItemButton, ListItemIcon, ListItemText, Switch } from "@mui/material"
+import SwitchField from "./SwitchField"
 
 function BaiduSetting() {
-  const { register, watch } = useFormContext<ChromeNinja.Options>()
-  const [open, setOpen] = useState(true)
+  const { watch } = useFormContext<ChromeNinja.Options>()
+  const open = useSignal(true)
   const baidu = watch("baidu")
   return (
-    <>
-      <ListItemButton onClick={() => setOpen((open) => !open)}>
-        <ListItemIcon>
+    <Collapsible.Root open={open.value} onOpenChange={(nextOpen) => {
+      open.value = nextOpen
+    }}>
+      <Collapsible.Trigger className="flex min-h-14 w-full items-center gap-3 border-t border-slate-100 px-4 text-left">
+        <span className="grid size-8 place-items-center rounded-lg bg-slate-50">
           <SvgBaidu width={24} height={24} />
-        </ListItemIcon>
-        <ListItemText primary="百度" />
-        {open ? <ExpandLess /> : <ExpandMore />}
-      </ListItemButton>
-      <Collapse in={open} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding>
-          <ListItemButton sx={{ pl: 4 }}>
-            <ListItemIcon>
-              <Api />
-            </ListItemIcon>
-            <ListItemText primary="清爽搜索" />
-            <Switch {...register("baidu.clearSearch")} checked={baidu.clearSearch} />
-          </ListItemButton>
-        </List>
-      </Collapse>
-    </>
+        </span>
+        <span className="flex-1 text-sm font-medium text-slate-900">百度</span>
+        <span className="text-sm text-slate-500">{open ? "收起" : "展开"}</span>
+      </Collapsible.Trigger>
+      <Collapsible.Panel keepMounted={false}>
+        <SwitchField checked={baidu.clearSearch} label="清爽搜索" path="baidu.clearSearch" />
+      </Collapsible.Panel>
+    </Collapsible.Root>
   )
 }
 
