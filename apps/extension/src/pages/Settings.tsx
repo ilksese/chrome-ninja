@@ -6,7 +6,7 @@ import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
 import * as yup from "yup"
 import { Button, List, ListSubheader } from "@mui/material"
-import { DEFAULT_OPTIONS } from "@/constant"
+import { DEFAULT_OPTIONS } from "@chrome-ninja/constants"
 import { optionsAtom } from "@/store/options"
 
 const validationSchema = yup.object<ChromeNinja.Options>({})

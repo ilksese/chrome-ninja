@@ -1,5 +1,5 @@
-import { ninjaLog } from "@lib/utils"
-import { DEFAULT_OPTIONS } from "@/constant"
+import { ninjaLog } from "@chrome-ninja/utils"
+import { DEFAULT_OPTIONS } from "@chrome-ninja/constants"
 
 ninjaLog("background runing")
 

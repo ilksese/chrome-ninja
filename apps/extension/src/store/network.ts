@@ -1,4 +1,4 @@
-import { ninjaLog } from "@lib/utils"
+import { ninjaLog } from "@chrome-ninja/utils"
 
 export const network = {
   subscribe: function (notify: () => void) {

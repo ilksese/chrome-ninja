@@ -1,5 +1,5 @@
 import { atom } from "jotai"
-import { DEFAULT_OPTIONS } from "@/constant"
+import { DEFAULT_OPTIONS } from "@chrome-ninja/constants"
 
 const optionsCache = atom<ChromeNinja.Options>(DEFAULT_OPTIONS)
 export const optionsAtom = atom(

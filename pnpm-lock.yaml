@@ -7,7 +7,55 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.13.0
+        version: 9.15.0
+      '@ianvs/prettier-plugin-sort-imports':
+        specifier: 4.4.0
+        version: 4.4.0(prettier@3.3.3)
+      commitizen:
+        specifier: 4.3.1
+        version: 4.3.1(@types/node@20.16.0)(typescript@5.6.3)
+      cz-conventional-changelog-zh-cn:
+        specifier: 0.0.7
+        version: 0.0.7(@types/node@20.16.0)(typescript@5.6.3)
+      eslint:
+        specifier: ^9.13.0
+        version: 9.15.0(jiti@1.21.6)
+      eslint-plugin-react-hooks:
+        specifier: ^5.0.0
+        version: 5.0.0(eslint@9.15.0(jiti@1.21.6))
+      eslint-plugin-react-refresh:
+        specifier: ^0.4.14
+        version: 0.4.14(eslint@9.15.0(jiti@1.21.6))
+      globals:
+        specifier: ^15.11.0
+        version: 15.12.0
+      prettier:
+        specifier: 3.3.3
+        version: 3.3.3
+      prettier-plugin-tailwindcss:
+        specifier: 0.6.9
+        version: 0.6.9(@ianvs/prettier-plugin-sort-imports@4.4.0(prettier@3.3.3))(prettier@3.3.3)
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
+      typescript-eslint:
+        specifier: ^8.11.0
+        version: 8.15.0(eslint@9.15.0(jiti@1.21.6))(typescript@5.6.3)
+
+  apps/extension:
     dependencies:
+      '@chrome-ninja/constants':
+        specifier: workspace:*
+        version: link:../../packages/constants
+      '@chrome-ninja/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@chrome-ninja/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       '@emotion/react':
         specifier: ^11.13.5
         version: 11.13.5(@types/react@18.3.12)(react@18.3.1)
@@ -17,9 +65,6 @@ importers:
       '@fontsource/roboto':
         specifier: ^5.1.0
         version: 5.1.0
-      '@ianvs/prettier-plugin-sort-imports':
-        specifier: 4.4.0
-        version: 4.4.0(prettier@3.3.3)
       '@mui/icons-material':
         specifier: ^6.1.7
         version: 6.1.7(@mui/material@6.1.7(@emotion/react@11.13.5(@types/react@18.3.12)(react@18.3.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(@types/react@18.3.12)(react@18.3.1))(@types/react@18.3.12)(react@18.3.1))(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.12)(react@18.3.1)
@@ -60,9 +105,6 @@ importers:
       '@crxjs/vite-plugin':
         specifier: 2.0.0-beta.28
         version: 2.0.0-beta.28
-      '@eslint/js':
-        specifier: ^9.13.0
-        version: 9.15.0
       '@types/chrome':
         specifier: ^0.0.283
         version: 0.0.283
@@ -81,42 +123,12 @@ importers:
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.4.49)
-      commitizen:
-        specifier: 4.3.1
-        version: 4.3.1(@types/node@20.16.0)(typescript@5.6.3)
-      cz-conventional-changelog-zh-cn:
-        specifier: 0.0.7
-        version: 0.0.7(@types/node@20.16.0)(typescript@5.6.3)
-      eslint:
-        specifier: ^9.13.0
-        version: 9.15.0(jiti@1.21.6)
-      eslint-plugin-react-hooks:
-        specifier: ^5.0.0
-        version: 5.0.0(eslint@9.15.0(jiti@1.21.6))
-      eslint-plugin-react-refresh:
-        specifier: ^0.4.14
-        version: 0.4.14(eslint@9.15.0(jiti@1.21.6))
-      globals:
-        specifier: ^15.11.0
-        version: 15.12.0
       postcss:
         specifier: ^8.4.49
         version: 8.4.49
-      prettier:
-        specifier: 3.3.3
-        version: 3.3.3
-      prettier-plugin-tailwindcss:
-        specifier: 0.6.9
-        version: 0.6.9(@ianvs/prettier-plugin-sort-imports@4.4.0(prettier@3.3.3))(prettier@3.3.3)
       tailwindcss:
         specifier: ^3.4.15
         version: 3.4.15
-      typescript:
-        specifier: ~5.6.2
-        version: 5.6.3
-      typescript-eslint:
-        specifier: ^8.11.0
-        version: 8.15.0(eslint@9.15.0(jiti@1.21.6))(typescript@5.6.3)
       vite:
         specifier: ^5.4.10
         version: 5.4.11(@types/node@20.16.0)
@@ -126,6 +138,23 @@ importers:
       vite-plugin-svgr:
         specifier: 4.3.0
         version: 4.3.0(rollup@4.27.3)(typescript@5.6.3)(vite@5.4.11(@types/node@20.16.0))
+
+  packages/constants:
+    dependencies:
+      '@chrome-ninja/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/types: {}
+
+  packages/utils:
+    dependencies:
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      tailwind-merge:
+        specifier: 2.5.4
+        version: 2.5.4
 
 packages:
 
@@ -242,6 +271,7 @@ packages:
 
   '@crxjs/vite-plugin@2.0.0-beta.28':
     resolution: {integrity: sha512-JUoB1431PvruQqVpxvJ5j6qh0NNx5sXafAXo+VltORtJQrS6wprI5QK4k6PLKV+WacsFuPLveM2ydBCEopU49w==}
+    deprecated: Beta versions are no longer maintained. Please upgrade to the stable 2.0.0 release
 
   '@emotion/babel-plugin@11.13.5':
     resolution: {integrity: sha512-pxHCpT2ex+0q+HH91/zsdHkw/lXd468DIN2zvfvLtPKLLMo6gQj7oLObq8PhkrxOZb/gGCq03S3Z7PDhS8pduQ==}
@@ -2415,6 +2445,7 @@ packages:
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
+    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
   whatwg-mimetype@4.0.0:
     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}
