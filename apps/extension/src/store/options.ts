@@ -2,6 +2,7 @@ import { atom } from "jotai"
 import type { Options } from "@/types"
 
 export const DEFAULT_OPTIONS: Options = {
+  userAgent: "default",
   bilibili: {
     enabled: true,
     blockAD: false,
@@ -9,6 +10,21 @@ export const DEFAULT_OPTIONS: Options = {
   },
   baidu: {
     clearSearch: true
+  }
+}
+
+export function mergeOptions(options?: Partial<Options>): Options {
+  return {
+    ...DEFAULT_OPTIONS,
+    ...options,
+    bilibili: {
+      ...DEFAULT_OPTIONS.bilibili,
+      ...options?.bilibili
+    },
+    baidu: {
+      ...DEFAULT_OPTIONS.baidu,
+      ...options?.baidu
+    }
   }
 }
 
@@ -23,6 +39,6 @@ export const optionsAtom = atom(
 )
 optionsCache.onMount = (setAtom) => {
   chrome.storage?.local.get(["options"], ({ options }) => {
-    setAtom(options)
+    setAtom(mergeOptions(options))
   })
 }

@@ -3,7 +3,6 @@ import { crx } from "@crxjs/vite-plugin"
 import preact from "@preact/preset-vite"
 import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "vite"
-import Pages from "vite-plugin-pages"
 import svgr from "vite-plugin-svgr"
 import manifest from "./manifest.config"
 
@@ -12,7 +11,6 @@ export default defineConfig({
   plugins: [
     preact(),
     tailwindcss(),
-    Pages({ resolver: "react" }),
     svgr(),
     crx({
       manifest,
@@ -21,6 +19,9 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    modulePreload: false
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

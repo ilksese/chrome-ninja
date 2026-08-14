@@ -6,20 +6,32 @@ import type { BilibiliOptionsType, Options } from "@/types"
 type SwitchFieldProps = {
   checked: boolean
   label: string
+  description?: string
   path: "baidu.clearSearch" | `bilibili.${keyof BilibiliOptionsType}`
-  tone?: "default" | "muted"
+  tone?: "blue" | "slate" | "orange"
 }
 
-function SwitchField({ checked, label, path, tone = "default" }: SwitchFieldProps) {
+function SwitchField({ checked, description, label, path, tone = "blue" }: SwitchFieldProps) {
   const { setValue } = useFormContext<Options>()
 
   return (
-    <label className="flex min-h-12 items-center gap-3 px-4 py-2 pl-12">
-      <span className={cn("grid size-7 place-items-center rounded-md text-xs font-semibold", tone === "muted" ? "bg-slate-100 text-slate-600" : "bg-sky-50 text-sky-700")}>ON</span>
-      <span className="flex-1 text-sm text-slate-800">{label}</span>
+    <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition-all hover:border-[#9bc8ff] hover:bg-slate-50 active:bg-[#f4f8ff]">
+      <span
+        className={cn(
+          "grid size-8 place-items-center rounded-lg text-[11px] font-semibold",
+          tone === "blue" && "bg-[#e8f2ff] text-[#005bd1]",
+          tone === "orange" && "bg-[#fff3ec] text-[#b24a13]",
+          tone === "slate" && "bg-slate-100 text-slate-600"
+        )}>
+        {checked ? "ON" : "OFF"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-slate-900">{label}</span>
+        {description && <span className="mt-0.5 block text-xs leading-4 text-slate-500">{description}</span>}
+      </span>
       <Switch.Root
         checked={checked}
-        className="relative h-6 w-11 rounded-full bg-slate-300 outline-none transition-colors data-[checked]:bg-slate-900 data-[focus-visible]:ring-2 data-[focus-visible]:ring-slate-400"
+        className="relative h-6 w-11 rounded-full bg-slate-300 outline-none transition-colors hover:bg-slate-400 data-[checked]:bg-[#101828] data-[checked]:hover:bg-[#1d2939] data-[focus-visible]:ring-2 data-[focus-visible]:ring-[#0077ff] data-[disabled]:opacity-50"
         onCheckedChange={(value: boolean) => {
           setValue(path, value, { shouldDirty: true, shouldTouch: true, shouldValidate: true })
         }}>
