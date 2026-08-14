@@ -3,9 +3,10 @@ import { useSignal } from "@preact/signals"
 import SvgBaidu from "@assets/svg/baidu.svg?react"
 import { useFormContext } from "react-hook-form"
 import SwitchField from "./SwitchField"
+import type { Options } from "@/types"
 
 function BaiduSetting() {
-  const { watch } = useFormContext<ChromeNinja.Options>()
+  const { watch } = useFormContext<Options>()
   const open = useSignal(true)
   const baidu = watch("baidu")
   return (

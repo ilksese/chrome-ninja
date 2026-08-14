@@ -1,6 +1,7 @@
 import type { IContentScriptAPI } from "../index"
+import type { BaiduSettingType } from "@/types"
 
-export function handler(options: ChromeNinja.BaiduSettingType, api: IContentScriptAPI) {
+export function handler(options: BaiduSettingType, api: IContentScriptAPI) {
   const { injectCSS, injectJS } = api
   const bilibiliHandler = {
     test: function () {

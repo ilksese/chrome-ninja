@@ -11,7 +11,7 @@
 
 - `manifest.config.ts` scans `src/content-script` and puts every file in `web_accessible_resources`; keep injected JS/CSS under that tree.
 - `injectJS` and `injectCSS` append extensions via `chrome.runtime.getURL`; pass names consistently with existing handlers before changing helper behavior.
-- Default extension options live in `@chrome-ninja/constants`; option types live in global `ChromeNinja` declarations from `@chrome-ninja/types`.
+- Default extension options live in `src/store/options.ts` (`DEFAULT_OPTIONS`); option types live in `src/types.ts`.
 - `chrome.storage.local` is the source of persisted options; `src/store/options.ts` mirrors it into Jotai.
 
 ## UI And CSS

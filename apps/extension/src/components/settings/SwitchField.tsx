@@ -1,16 +1,17 @@
 import { Switch } from "@base-ui/react/switch"
 import { cn } from "@chrome-ninja/utils"
 import { useFormContext } from "react-hook-form"
+import type { BilibiliOptionsType, Options } from "@/types"
 
 type SwitchFieldProps = {
   checked: boolean
   label: string
-  path: "baidu.clearSearch" | `bilibili.${keyof ChromeNinja.BilibiliOptionsType}`
+  path: "baidu.clearSearch" | `bilibili.${keyof BilibiliOptionsType}`
   tone?: "default" | "muted"
 }
 
 function SwitchField({ checked, label, path, tone = "default" }: SwitchFieldProps) {
-  const { setValue } = useFormContext<ChromeNinja.Options>()
+  const { setValue } = useFormContext<Options>()
 
   return (
     <label className="flex min-h-12 items-center gap-3 px-4 py-2 pl-12">

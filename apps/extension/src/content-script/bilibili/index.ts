@@ -1,6 +1,7 @@
 import type { IContentScriptAPI } from "../index"
+import type { BilibiliOptionsType } from "@/types"
 
-export function handler(options: ChromeNinja.BilibiliOptionsType, api: IContentScriptAPI) {
+export function handler(options: BilibiliOptionsType, api: IContentScriptAPI) {
   const { injectCSS, injectJS } = api
   const bilibiliHandler = {
     test: function () {
