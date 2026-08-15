@@ -10,6 +10,9 @@ export const DEFAULT_OPTIONS: Options = {
   },
   baidu: {
     clearSearch: true
+  },
+  boss: {
+    enabled: false
   }
 }
 
@@ -24,6 +27,10 @@ export function mergeOptions(options?: Partial<Options>): Options {
     baidu: {
       ...DEFAULT_OPTIONS.baidu,
       ...options?.baidu
+    },
+    boss: {
+      ...DEFAULT_OPTIONS.boss,
+      ...options?.boss
     }
   }
 }

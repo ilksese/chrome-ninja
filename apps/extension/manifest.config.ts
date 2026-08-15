@@ -56,6 +56,14 @@ export default {
   },
   content_scripts: [
     {
+      all_frames: true,
+      js: ["src/user-agent/boss-loader.ts"],
+      match_about_blank: true,
+      match_origin_as_fallback: true,
+      matches: ["*://*.zhipin.com/*", "*://*.bosszhipin.com/*"],
+      run_at: "document_start"
+    },
+    {
       all_frames: false,
       js: ["src/content-script/index.ts"],
       matches: ["*://*/*"],
@@ -73,11 +81,11 @@ export default {
   },
   offline_enabled: true,
   host_permissions: ["<all_urls>"],
-  permissions: ["storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest"],
+  permissions: ["storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation"],
   web_accessible_resources: [
     {
       matches: ["*://*/*"],
-      resources: [...(await contentScriptFiles())]
+      resources: [...(await contentScriptFiles()), "src/user-agent/boss-anti-detection.js"]
     }
   ],
   icons: {

@@ -18,6 +18,9 @@ const validationSchema = v.object({
   }),
   baidu: v.object({
     clearSearch: v.boolean()
+  }),
+  boss: v.object({
+    enabled: v.boolean()
   })
 })
 

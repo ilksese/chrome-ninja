@@ -67,6 +67,7 @@ const Home = ({ layout }: HomeProps) => {
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
   const [selectedUserAgent, setSelectedUserAgent] = useState<UserAgentType>(options.userAgent)
   const [isApplying, setIsApplying] = useState(false)
+  const [isBossApplying, setIsBossApplying] = useState(false)
   const [error, setError] = useState("")
   const triggerRef = useRef<HTMLButtonElement>(null)
   const firstRadioRef = useRef<HTMLInputElement>(null)
@@ -115,6 +116,18 @@ const Home = ({ layout }: HomeProps) => {
     }
   }
 
+  const toggleBossAntiDetection = async () => {
+    setIsBossApplying(true)
+    setError("")
+    try {
+      await setOptions({ ...options, boss: { ...options.boss, enabled: !options.boss.enabled } })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "BOSS 反检测开关保存失败")
+    } finally {
+      setIsBossApplying(false)
+    }
+  }
+
   return (
     <div className={cn("Home", isOptions ? "grid grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)] gap-6 max-[900px]:block" : "space-y-3")}>
       <section className={cn("overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(16,24,40,0.12)]", isOptions && "grid grid-cols-[0.92fr_1.08fr] max-[900px]:block")}>
@@ -153,9 +166,9 @@ const Home = ({ layout }: HomeProps) => {
           <BrowserMockup compact={!isOptions} />
         </div>
 
-        <button
-          ref={triggerRef}
-          className={cn("flex w-full items-center gap-3 border-t border-slate-200 bg-slate-50 text-left transition-all hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60", isOptions ? "col-span-2 px-4 py-4" : "px-3.5 py-3")}
+          <button
+            ref={triggerRef}
+            className={cn("flex w-full items-center gap-3 border-t border-slate-200 bg-slate-50 text-left transition-all hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60", isOptions ? "col-span-2 px-4 py-4" : "px-3.5 py-3")}
           type="button"
           disabled={isApplying}
           onClick={openUserAgentDialog}>
@@ -165,6 +178,23 @@ const Home = ({ layout }: HomeProps) => {
             <span className="mt-0.5 block truncate text-xs text-slate-500">当前为 {activeUserAgent.label} · {USER_AGENT_HINTS[options.userAgent]}</span>
           </span>
           <span className="text-2xl leading-none text-[#005bd1]">›</span>
+        </button>
+
+        <button
+          className={cn("flex w-full items-center gap-3 border-t border-slate-200 bg-white text-left transition-all hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60", isOptions ? "col-span-2 px-4 py-4" : "px-3.5 py-3")}
+          type="button"
+          role="switch"
+          aria-checked={options.boss.enabled}
+          disabled={isBossApplying}
+          onClick={toggleBossAntiDetection}>
+          <span className={cn("grid place-items-center rounded-xl text-[11px] font-semibold shadow-sm", isOptions ? "size-10" : "size-9", options.boss.enabled ? "bg-[#101828] text-white" : "bg-slate-100 text-slate-500")}>{options.boss.enabled ? "ON" : "OFF"}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-slate-950">BOSS 反检测</span>
+            <span className="mt-0.5 block truncate text-xs text-slate-500">{options.boss.enabled ? "已启用 zhipin/bosszhipin 页面环境保护" : "默认关闭，需要时手动启用"}</span>
+          </span>
+          <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.boss.enabled ? "bg-[#101828]" : "bg-slate-300")} aria-hidden="true">
+            <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.boss.enabled ? "translate-x-5" : "translate-x-0.5")} />
+          </span>
         </button>
       </section>
 
