@@ -50,6 +50,9 @@ importers:
       '@base-ui/react':
         specifier: 1.7.0
         version: 1.7.0
+      '@chrome-ninja/hmr':
+        specifier: workspace:*
+        version: link:../../packages/hmr
       '@chrome-ninja/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -59,9 +62,6 @@ importers:
       '@hookform/resolvers':
         specifier: 5.8.0
         version: 5.8.0(ajv@8.17.1)(react-hook-form@7.85.0)(valibot@1.4.2(typescript@5.6.3))
-      '@preact/signals':
-        specifier: 2.11.1
-        version: 2.11.1(preact@10.29.8)
       clsx:
         specifier: 2.1.1
         version: 2.1.1
@@ -123,9 +123,6 @@ importers:
       '@chrome-ninja/utils':
         specifier: workspace:*
         version: link:../../packages/utils
-      '@preact/signals':
-        specifier: 2.11.1
-        version: 2.11.1(preact@10.29.8)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -154,6 +151,8 @@ importers:
       vite:
         specifier: 6.4.3
         version: 6.4.3(@types/node@20.16.0)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.6.1)
+
+  packages/hmr: {}
 
   packages/utils:
     dependencies:
@@ -862,14 +861,6 @@ packages:
     peerDependencies:
       '@babel/core': 7.x
       vite: 2.x || 3.x || 4.x || 5.x || 6.x || 7.x || 8.x
-
-  '@preact/signals-core@1.14.4':
-    resolution: {integrity: sha512-HNB6HYeYKhQbJ1aKl+YRjrS4+QWHLKX6qKoUsfS/m0vqzsVaEBiZiaKbG/e+NKk2ch5ALQr/ihWaMHxiCuuWHA==}
-
-  '@preact/signals@2.11.1':
-    resolution: {integrity: sha512-uYoD+USkacTNU02kfCBkJEV7xabKTmA78W5pnT2GymsuGEC9n/ZO+UT4S96l0dIL6KLDk77VJyUFuOMBvftVHg==}
-    peerDependencies:
-      preact: '>= 10.25.0 || >=11.0.0-0'
 
   '@prefresh/babel-plugin@0.5.3':
     resolution: {integrity: sha512-57LX2SHs4BX2s1IwCjNzTE2OJeEepRCNf1VTEpbNcUyHfMO68eeOWGDIt4ob9aYlW6PEWZ1SuwNikuoIXANDtQ==}
@@ -3337,13 +3328,6 @@ snapshots:
       - preact
       - rollup
       - supports-color
-
-  '@preact/signals-core@1.14.4': {}
-
-  '@preact/signals@2.11.1(preact@10.29.8)':
-    dependencies:
-      '@preact/signals-core': 1.14.4
-      preact: 10.29.8
 
   '@prefresh/babel-plugin@0.5.3': {}
 

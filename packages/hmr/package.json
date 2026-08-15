@@ -1,0 +1,21 @@
+{
+  "name": "@chrome-ninja/hmr",
+  "version": "0.1.0",
+  "description": "Local HMR service for chrome ninja extension",
+  "private": true,
+  "type": "module",
+  "main": "./src/server/index.mjs",
+  "exports": {
+    ".": "./src/server/index.mjs",
+    "./server": "./src/server/index.mjs",
+    "./client": "./src/client/index.ts",
+    "./protocol": "./src/protocol.ts"
+  },
+  "scripts": {
+    "dev": "node src/server/index.mjs",
+    "start": "node src/server/index.mjs"
+  },
+  "files": [
+    "src"
+  ]
+}

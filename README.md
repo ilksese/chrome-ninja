@@ -12,6 +12,7 @@ chrome-ninja/
 └── packages/
     ├── types/       # 全局 ChromeNinja 命名空间类型
     ├── constants/   # 默认配置常量
+    ├── hmr/         # 本地 HMR/debug 服务
     └── utils/       # 共享小工具
 ```
 

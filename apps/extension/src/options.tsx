@@ -1,6 +1,7 @@
 import { Provider as JotaiProvider } from "jotai"
 import { render } from "preact"
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom"
+import { connectHmrClient } from "@chrome-ninja/hmr/client"
 import { rootStore } from "@store"
 import App from "./App"
 import "normalize.css"
@@ -19,3 +20,4 @@ render(
   </JotaiProvider>,
   document.getElementById("root")!
 )
+connectHmrClient("options")

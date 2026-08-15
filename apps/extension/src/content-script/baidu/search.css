@@ -1,40 +1,44 @@
-/** 主页信息流 **/
-#s_wrap {
-  display: none;
-}
-/** 主页页脚 **/
+/** 主页信息流和页脚 **/
+#s_wrap,
 #bottom_layer {
-  display: none;
+  display: none !important;
 }
-/** 热搜 **/
+
+/** 右侧热搜、相关搜索、百度保障等混合侧栏 **/
 #content_right {
-  display: none;
+  display: none !important;
 }
+
 /** 底部相关搜索 **/
-.result-molecule:has(#rs_new) {
-  display: none;
+.result-molecule:has(#rs_new),
+#rs_new {
+  display: none !important;
 }
-#content_left {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1ch;
-  & > div:not([tpl="se_com_default"]):not([tpl="sg_kg_entity_san"]):not([tpl="bk_polysemy"]),
-  & > div:not([mu]) {
-    display: none;
-  }
-  & > div {
-    box-sizing: content-box;
-    border: 1px solid #999;
-    padding: 1em;
-    border-radius: 16px;
-    cursor: pointer;
-    overflow: hidden;
-    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
-    &:hover {
-      background: skyblue;
-    }
-    .cu-border {
-      box-shadow: none;
-    }
-  }
+
+/** 左侧推荐流和百度内容聚合导流 **/
+#content_left > [tpl="recommend_list"],
+#content_left > [tpl="note_lead"],
+#content_left > [tpl="live_converge_san"],
+#content_left > [tpl="jy_wenku_wenshu"],
+#content_left > [tpl="med_mall_recommend_san"],
+#content_left > [tpl="tieba_general"] {
+  display: none !important;
+}
+
+/** 显式或结构化广告，排除文心一言/百度 AI 入口和答案模块 **/
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has([data-placeid]),
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has(.EC_result),
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has([class*="ec-"]),
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has([class*="ec_"]),
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has(a[href*="e.baidu.com"]),
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has(a[href*="ada.baidu.com"]),
+#content_left
+  > div:not([tpl="app/chat-input"]):not([tpl="wenda_generate"]):not([tpl="new_baikan_index"]):not(:has(#chat-input-main)):not(:has(.ai-entry)):has(a[href*="other.php?url="]) {
+  display: none !important;
 }

@@ -1,13 +1,13 @@
 import { Switch } from "@base-ui/react/switch"
 import { cn } from "@chrome-ninja/utils"
 import { useFormContext } from "react-hook-form"
-import type { BilibiliOptionsType, Options } from "@/types"
+import type { BilibiliOptionsType, BossSettingType, Options } from "@/types"
 
 type SwitchFieldProps = {
   checked: boolean
   label: string
   description?: string
-  path: "baidu.clearSearch" | `bilibili.${keyof BilibiliOptionsType}`
+  path: "baidu.clearSearch" | `bilibili.${keyof BilibiliOptionsType}` | `boss.${keyof BossSettingType}`
   tone?: "blue" | "slate" | "orange"
 }
 
