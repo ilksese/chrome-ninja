@@ -1,5 +1,6 @@
 import { cn } from "@chrome-ninja/utils"
 import { useAtom } from "jotai"
+import { createPortal } from "preact/compat"
 import { useEffect, useRef, useState } from "preact/hooks"
 import logoIcon from "@assets/mdlogo.png"
 import baiduIcon from "@assets/svg/baidu.svg"
@@ -11,6 +12,8 @@ import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/us
 type HomeProps = {
   layout: "popup" | "options"
 }
+
+const HOME_INTRO_STORAGE_KEY = "homeIntroSeen"
 
 const USER_AGENT_HINTS: Record<UserAgentType, string> = {
   default: "跟随当前浏览器，不额外改写请求身份。",
@@ -62,9 +65,96 @@ function BrowserMockup({ compact = false }: { compact?: boolean }) {
   )
 }
 
+function IntroDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    requestAnimationFrame(() => closeButtonRef.current?.focus())
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose()
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [onClose, open])
+
+  if (!open) {
+    return null
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] grid place-items-center bg-slate-950/50 p-4" role="presentation" onClick={onClose}>
+      <section
+        className="flex max-h-[95vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[16px] border border-white/12 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="home-intro-title"
+        onClick={(event) => event.stopPropagation()}>
+        <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#101828,#123b66_62%,#0c5fb8)] px-5 py-4 text-white">
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-xl border border-white/12 bg-white/10 shadow-sm">
+              <img className="size-8" src={logoIcon} alt="chrome ninja" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-white/62">chrome ninja</span>
+              <h2 id="home-intro-title" className="mt-1 text-lg font-semibold leading-6">
+                清爽浏览，默认高效
+              </h2>
+            </span>
+          </div>
+          <p className="mt-3 text-sm leading-5 text-white/78">B 站高画质、搜索减干扰、UA 身份切换。</p>
+        </div>
+
+        <div className="min-h-0 space-y-3 overflow-y-auto p-5">
+          <BrowserMockup />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <img className="size-5" src={bilibiliIcon} alt="" />
+                <span className="text-xs font-medium text-slate-700">Bilibili</span>
+              </div>
+              <p className="text-sm font-semibold leading-5 text-slate-950">默认高画质</p>
+            </div>
+            <div className="rounded-xl border border-[#ffd0b8] bg-[#fff3ec] p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <img className="size-5" src={baiduIcon} alt="" />
+                <span className="text-xs font-medium text-slate-700">Baidu</span>
+              </div>
+              <p className="text-sm font-semibold leading-5 text-slate-950">结果更清爽</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-slate-950">首次进入提示</span>
+              <span className="block text-xs leading-4 text-slate-500">关闭后将不再显示。</span>
+            </span>
+            <button
+              ref={closeButtonRef}
+              className="shrink-0 rounded-lg bg-[#101828] px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054]"
+              type="button"
+              onClick={onClose}>
+              开始使用
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>,
+    document.body
+  )
+}
+
 const Home = ({ layout }: HomeProps) => {
   const [options, setOptions] = useAtom(optionsAtom)
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
+  const [hasSeenIntro, setHasSeenIntro] = useState<boolean | null>(null)
   const [selectedUserAgent, setSelectedUserAgent] = useState<UserAgentType>(options.userAgent)
   const [isApplying, setIsApplying] = useState(false)
   const [isBossApplying, setIsBossApplying] = useState(false)
@@ -74,6 +164,18 @@ const Home = ({ layout }: HomeProps) => {
   const activeUserAgent = getUserAgentOption(options.userAgent)
   const selectedUserAgentOption = getUserAgentOption(selectedUserAgent)
   const isOptions = layout === "options"
+  const shouldShowIntro = hasSeenIntro === false
+
+  useEffect(() => {
+    chrome.storage?.local.get([HOME_INTRO_STORAGE_KEY], (result) => {
+      setHasSeenIntro(result[HOME_INTRO_STORAGE_KEY] === true)
+    })
+  }, [])
+
+  const dismissIntro = () => {
+    setHasSeenIntro(true)
+    chrome.storage?.local.set({ [HOME_INTRO_STORAGE_KEY]: true }, () => {})
+  }
 
   const closeUserAgentDialog = () => {
     setIsUserAgentOpen(false)
@@ -129,31 +231,65 @@ const Home = ({ layout }: HomeProps) => {
   }
 
   return (
-    <div className={cn("Home", isOptions ? "grid grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)] gap-6 max-[900px]:block" : "space-y-3")}>
-      <section className={cn("overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(16,24,40,0.12)]", isOptions && "grid grid-cols-[0.92fr_1.08fr] max-[900px]:block")}>
-        <div className={cn(isOptions ? "px-4 pb-4 pt-4" : "px-3.5 pb-3 pt-3.5")}>
-          <div className={cn("flex items-center gap-3", isOptions ? "mb-4" : "mb-2.5")}>
-            <span className={cn("grid place-items-center rounded-xl border border-slate-200 bg-white shadow-sm", isOptions ? "size-11" : "size-10")}>
-              <img className={cn(isOptions ? "size-8" : "size-7")} src={logoIcon} alt="chrome ninja" />
+    <div className={cn("Home relative", isOptions ? "grid grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)] gap-6 max-[900px]:block" : "space-y-3")}>
+      <section className={cn("overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(16,24,40,0.12)]", isOptions && "grid grid-cols-[0.92fr_1.08fr] max-[900px]:block") }>
+        <div className={cn(isOptions ? "px-4 pb-4 pt-4" : "px-3.5 pb-3 pt-3.5") }>
+          <div className={cn("flex items-center justify-between gap-3", isOptions ? "mb-4" : "mb-3") }>
+            <span className="min-w-0 flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                <img className="size-7" src={logoIcon} alt="chrome ninja" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">chrome ninja</span>
+                <span className="block text-[15px] font-semibold leading-5 text-slate-950">控制面板</span>
+              </span>
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">chrome ninja</span>
-              <span className="block text-lg font-semibold leading-6 text-slate-950">清爽浏览，默认高效</span>
-            </span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">运行中</span>
           </div>
-          <p className={cn("font-semibold text-slate-950", isOptions ? "text-[22px] leading-7" : "text-[19px] leading-6")}>B 站高画质、搜索减干扰、UA 身份切换。</p>
-          <p className={cn("text-slate-600", isOptions ? "mt-2 text-sm leading-5" : "mt-1 text-xs leading-4")}>打开即用，少调设置，多看内容。</p>
 
-          <div className={cn("grid grid-cols-2", isOptions ? "mt-4 gap-3" : "mt-3 gap-2")}> 
-            <div className={cn("rounded-xl border border-[#b7d6ff] bg-[#e8f2ff]", isOptions ? "p-3" : "p-2.5")}>
-              <div className={cn("flex items-center gap-2", isOptions ? "mb-2" : "mb-1")}>
+          <div className={cn("grid gap-3", isOptions ? "grid-cols-[minmax(0,1fr)_160px]" : "") }>
+            <button
+              ref={triggerRef}
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60"
+              type="button"
+              disabled={isApplying}
+              onClick={openUserAgentDialog}>
+              <span className="grid size-10 place-items-center rounded-xl bg-[#101828] text-sm font-semibold text-white shadow-[0_10px_22px_rgba(16,24,40,0.18)]">UA</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">切换浏览器身份</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">当前为 {activeUserAgent.label}</span>
+              </span>
+              <span className="text-2xl leading-none text-[#005bd1]">›</span>
+            </button>
+
+            <button
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60"
+              type="button"
+              role="switch"
+              aria-checked={options.boss.enabled}
+              disabled={isBossApplying}
+              onClick={toggleBossAntiDetection}>
+              <span className={cn("grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm", options.boss.enabled ? "bg-[#101828] text-white" : "bg-slate-100 text-slate-500")}>{options.boss.enabled ? "ON" : "OFF"}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">BOSS 反检测</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">{options.boss.enabled ? "已启用" : "默认关闭"}</span>
+              </span>
+              <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.boss.enabled ? "bg-[#101828]" : "bg-slate-300")} aria-hidden="true">
+                <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.boss.enabled ? "translate-x-5" : "translate-x-0.5")} />
+              </span>
+            </button>
+          </div>
+
+          <div className={cn("mt-3 grid gap-2", isOptions ? "grid-cols-2" : "grid-cols-2 max-[420px]:grid-cols-1") }>
+            <div className="rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-3 py-2.5">
+              <div className="mb-1.5 flex items-center gap-2">
                 <img className="size-5" src={bilibiliIcon} alt="" />
                 <span className="text-xs font-medium text-slate-700">Bilibili</span>
               </div>
               <p className="text-sm font-semibold leading-5 text-slate-950">默认高画质</p>
             </div>
-            <div className={cn("rounded-xl border border-[#ffd0b8] bg-[#fff3ec]", isOptions ? "p-3" : "p-2.5")}>
-              <div className={cn("flex items-center gap-2", isOptions ? "mb-2" : "mb-1")}>
+            <div className="rounded-xl border border-[#ffd0b8] bg-[#fff3ec] px-3 py-2.5">
+              <div className="mb-1.5 flex items-center gap-2">
                 <img className="size-5" src={baiduIcon} alt="" />
                 <span className="text-xs font-medium text-slate-700">Baidu</span>
               </div>
@@ -162,40 +298,14 @@ const Home = ({ layout }: HomeProps) => {
           </div>
         </div>
 
-        <div className={cn(isOptions ? "px-4 pb-4" : "px-3.5 pb-3")}>
-          <BrowserMockup compact={!isOptions} />
+        <div className={cn(isOptions ? "px-4 pb-4 pt-0" : "px-3.5 pb-3 pt-0") }>
+          <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">当前状态</p>
+            <p className="mt-2 text-sm leading-5 text-slate-600">已加载浏览器设置，选择一个身份后会自动同步到扩展存储。</p>
+            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+          </div>
         </div>
 
-          <button
-            ref={triggerRef}
-            className={cn("flex w-full items-center gap-3 border-t border-slate-200 bg-slate-50 text-left transition-all hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60", isOptions ? "col-span-2 px-4 py-4" : "px-3.5 py-3")}
-          type="button"
-          disabled={isApplying}
-          onClick={openUserAgentDialog}>
-          <span className={cn("grid place-items-center rounded-xl bg-[#101828] text-sm font-semibold text-white shadow-[0_10px_22px_rgba(16,24,40,0.18)]", isOptions ? "size-10" : "size-9")}>UA</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-slate-950">切换浏览器身份</span>
-            <span className="mt-0.5 block truncate text-xs text-slate-500">当前为 {activeUserAgent.label} · {USER_AGENT_HINTS[options.userAgent]}</span>
-          </span>
-          <span className="text-2xl leading-none text-[#005bd1]">›</span>
-        </button>
-
-        <button
-          className={cn("flex w-full items-center gap-3 border-t border-slate-200 bg-white text-left transition-all hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60", isOptions ? "col-span-2 px-4 py-4" : "px-3.5 py-3")}
-          type="button"
-          role="switch"
-          aria-checked={options.boss.enabled}
-          disabled={isBossApplying}
-          onClick={toggleBossAntiDetection}>
-          <span className={cn("grid place-items-center rounded-xl text-[11px] font-semibold shadow-sm", isOptions ? "size-10" : "size-9", options.boss.enabled ? "bg-[#101828] text-white" : "bg-slate-100 text-slate-500")}>{options.boss.enabled ? "ON" : "OFF"}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-slate-950">BOSS 反检测</span>
-            <span className="mt-0.5 block truncate text-xs text-slate-500">{options.boss.enabled ? "已启用 zhipin/bosszhipin 页面环境保护" : "默认关闭，需要时手动启用"}</span>
-          </span>
-          <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.boss.enabled ? "bg-[#101828]" : "bg-slate-300")} aria-hidden="true">
-            <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.boss.enabled ? "translate-x-5" : "translate-x-0.5")} />
-          </span>
-        </button>
       </section>
 
       {isUserAgentOpen && (
@@ -258,6 +368,8 @@ const Home = ({ layout }: HomeProps) => {
           </section>
         </div>
       )}
+
+      <IntroDialog open={shouldShowIntro} onClose={dismissIntro} />
     </div>
   )
 }
