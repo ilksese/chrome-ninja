@@ -4,12 +4,12 @@ import type { Options } from "@/types"
 export const DEFAULT_OPTIONS: Options = {
   userAgent: "default",
   bilibili: {
-    enabled: true,
+    enabled: false,
     blockAD: false,
     notify: false
   },
   baidu: {
-    clearSearch: true
+    clearSearch: false
   },
   boss: {
     enabled: false

@@ -1,7 +1,7 @@
 {
-  "name": "@chrome-ninja/server",
+  "name": "@chrome-ninja/hmr",
   "version": "0.1.0",
-  "description": "Local debug server for chrome ninja extension popup",
+  "description": "Local HMR service for chrome ninja extension",
   "private": true,
   "type": "module",
   "scripts": {

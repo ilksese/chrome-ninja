@@ -1,6 +1,5 @@
 import type { ComponentChildren } from "preact"
-import { useEffect, useRef } from "preact/hooks"
-import { useSignal } from "@preact/signals"
+import { useEffect, useRef, useState } from "preact/hooks"
 import { cn } from "@/lib/utils"
 
 interface RevealProps {
@@ -12,7 +11,7 @@ interface RevealProps {
 
 export function Reveal({ children, className, delay = 0, direction = "up" }: RevealProps) {
   const ref = useRef<HTMLDivElement | null>(null)
-  const visible = useSignal(false)
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     const node = ref.current
@@ -20,7 +19,7 @@ export function Reveal({ children, className, delay = 0, direction = "up" }: Rev
     const observer = new IntersectionObserver(
         ([entry]) => {
           if (entry.isIntersecting) {
-            visible.value = true
+            setVisible(true)
             observer.disconnect()
           }
         },
@@ -28,7 +27,7 @@ export function Reveal({ children, className, delay = 0, direction = "up" }: Rev
       )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [visible])
+  }, [])
 
   const transform = {
     up: "translate-y-8",

@@ -1,7 +1,9 @@
+import { connectHmrClient } from "@/hmr/client"
 import { handler as baiduHandler } from "./baidu"
 import { handler as biliHandler } from "./bilibili"
 
 console.log("content-script: chrome-ninja is runing")
+connectHmrClient("content")
 
 const CONTENT_SCRIPT_PATH = "https://localhost:80/src/content-script/"
 

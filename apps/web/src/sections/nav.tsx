@@ -1,5 +1,4 @@
-import { useEffect } from "preact/hooks"
-import { useSignal } from "@preact/signals"
+import { useEffect, useState } from "preact/hooks"
 import { cn } from "@/lib/utils"
 import { SITE } from "@/lib/site"
 import { ASSETS } from "@/lib/assets"
@@ -13,16 +12,16 @@ const LINKS = [
 ]
 
 export function Nav() {
-  const scrolled = useSignal(false)
+  const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
     const onScroll = () => {
-      scrolled.value = window.scrollY > 20
+      setScrolled(window.scrollY > 20)
     }
     onScroll()
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
-  }, [scrolled])
+  }, [])
 
   return (
     <header

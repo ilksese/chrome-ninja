@@ -1,11 +1,13 @@
 import { ninjaLog } from "@chrome-ninja/utils"
 import { DEFAULT_OPTIONS, mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
+import { connectHmrBackground } from "@/hmr/background"
 import { applyUserAgentRule } from "@/user-agent"
 import { registerBossAntiDetectionBackground } from "@/user-agent/boss-navigation"
 
 ninjaLog("background runing")
 registerBossAntiDetectionBackground()
+connectHmrBackground()
 
 type StorageCache = {
   options: Options

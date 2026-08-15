@@ -6,6 +6,8 @@ import { defineConfig } from "vite"
 import svgr from "vite-plugin-svgr"
 import manifest from "./manifest.config"
 
+const isHmrDevBuild = process.env.VITE_CHROME_NINJA_HMR === "true"
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -20,6 +22,7 @@ export default defineConfig({
     })
   ],
   build: {
+    emptyOutDir: !isHmrDevBuild,
     modulePreload: false
   },
   resolve: {
