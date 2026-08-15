@@ -50,6 +50,9 @@ importers:
       '@base-ui/react':
         specifier: 1.7.0
         version: 1.7.0
+      '@chrome-ninja/hmr':
+        specifier: workspace:*
+        version: link:../../packages/hmr
       '@chrome-ninja/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -148,6 +151,8 @@ importers:
       vite:
         specifier: 6.4.3
         version: 6.4.3(@types/node@20.16.0)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.6.1)
+
+  packages/hmr: {}
 
   packages/utils:
     dependencies:

@@ -14,7 +14,7 @@ const executeTimeoutMs = Number(process.env.CHROME_NINJA_HMR_EXECUTE_TIMEOUT_MS 
 const inactiveTimeoutMs = 60000
 const pingIntervalMs = 15000
 const maxBodyBytes = 5 * 1024 * 1024
-const features = ["heartbeat", "health", "execute-js", "reload-extension", "reload-client", "reload-tabs"]
+const features = ["heartbeat", "health", "execute-js", "command", "reload-extension", "reload-client", "reload-tabs"]
 const webSocketClients = new Set()
 const pendingExecutes = new Map()
 let backgroundSequence = 0
@@ -147,10 +147,15 @@ function createServer() {
       return
     }
 
-		if (request.method === "POST" && url.pathname === "/reload") {
-			await handleReload(request, response)
-			return
-		}
+    if (request.method === "POST" && url.pathname === "/command") {
+      await handleCommand(request, response)
+      return
+    }
+
+    if (request.method === "POST" && url.pathname === "/reload") {
+      await handleReload(request, response)
+      return
+    }
 
     if (request.method !== "GET" || url.pathname !== "/") {
       sendJson(response, 404, { ok: false, error: "Not found" })
@@ -204,76 +209,109 @@ async function handleExecute(request, response) {
   }
 }
 
+async function handleCommand(request, response) {
+  let body
+  try {
+    body = await readJsonBody(request)
+  } catch (error) {
+    const status = error.status || 400
+    sendJson(response, status, { ok: false, error: error.message || "Invalid JSON" })
+    return
+  }
+
+  const validationError = validateCommandBody(body)
+  if (validationError) {
+    sendJson(response, 400, { ok: false, error: validationError })
+    return
+  }
+
+  const background = getLatestBackground()
+  if (!background) {
+    sendJson(response, 503, { ok: false, error: "No background client connected" })
+    return
+  }
+
+  try {
+    const result = await commandInBackground(background, body)
+    sendJson(response, 200, result)
+  } catch (error) {
+    sendJson(response, error.status || 500, { ok: false, error: error.message || "Command failed" })
+  }
+}
+
 async function handleReload(request, response) {
-	let body
-	try {
-		body = await readJsonBody(request)
-	} catch (error) {
-		const status = error.status || 400
-		sendJson(response, status, { ok: false, error: error.message || "Invalid JSON" })
-		return
-	}
+  let body
+  try {
+    body = await readJsonBody(request)
+  } catch (error) {
+    const status = error.status || 400
+    sendJson(response, status, { ok: false, error: error.message || "Invalid JSON" })
+    return
+  }
 
-	const reload = createReloadMessage(body)
-	if (reload.error) {
-		sendJson(response, 400, { ok: false, error: reload.error })
-		return
-	}
+  const reload = createReloadMessage(body)
+  if (reload.error) {
+    sendJson(response, 400, { ok: false, error: reload.error })
+    return
+  }
 
-	const background = getLatestBackground()
-	if (!background) {
-		sendJson(response, 503, { ok: false, error: "No background client connected" })
-		return
-	}
+  const background = getLatestBackground()
+  if (!background) {
+    sendJson(response, 503, { ok: false, error: "No background client connected" })
+    return
+  }
 
-	if (!sendMessage(background, reload.message)) {
-		sendJson(response, 503, { ok: false, error: "Background client disconnected" })
-		return
-	}
+  if (!sendMessage(background, reload.message)) {
+    sendJson(response, 503, { ok: false, error: "Background client disconnected" })
+    return
+  }
 
-	logEvent("reload", reload.log)
-	sendJson(response, 200, { ok: true, ...reload.log })
+  logEvent("reload", reload.log)
+  sendJson(response, 200, { ok: true, ...reload.log })
 }
 
 function createReloadMessage(body) {
-	const target = body?.target || "extension"
-	const reason = typeof body?.reason === "string" ? body.reason : "build"
+  const target = body?.target || "extension"
+  const reason = typeof body?.reason === "string" ? body.reason : "build"
 
-	if (target === "extension") {
-		return {
-			message: { type: "hmr:reload-extension", reason },
-			log: { target, reason }
-		}
-	}
+  if (target === "extension") {
+    return {
+      message: { type: "hmr:reload-extension", reason },
+      log: { target, reason }
+    }
+  }
 
-	if (target === "clients") {
-		const scopes = normalizeStringArray(body?.scopes)
-		if (body?.scopes !== undefined && scopes.length === 0) return { error: "scopes must be an array containing popup, options, or content" }
-		if (scopes.some((scope) => !["popup", "options", "content"].includes(scope))) return { error: "scopes must contain only popup, options, or content" }
+  if (target === "clients") {
+    const scopes = normalizeStringArray(body?.scopes)
+    if (body?.scopes !== undefined && scopes.length === 0)
+      return { error: "scopes must be an array containing popup, options, or content" }
+    if (scopes.some((scope) => !["popup", "options", "content"].includes(scope)))
+      return { error: "scopes must contain only popup, options, or content" }
 
-		return {
-			message: { type: "hmr:reload-client", scopes, reason },
-			log: { target, scopes, reason }
-		}
-	}
+    return {
+      message: { type: "hmr:reload-client", scopes, reason },
+      log: { target, scopes, reason }
+    }
+  }
 
-	if (target === "tabs") {
-		const matches = normalizeStringArray(body?.matches)
-		if (body?.matches !== undefined && matches.length === 0) return { error: "matches must be an array of Chrome match patterns" }
+  if (target === "tabs") {
+    const matches = normalizeStringArray(body?.matches)
+    if (body?.matches !== undefined && matches.length === 0)
+      return { error: "matches must be an array of Chrome match patterns" }
 
-		return {
-			message: { type: "hmr:reload-tabs", matches, reason },
-			log: { target, matches, reason }
-		}
-	}
+    return {
+      message: { type: "hmr:reload-tabs", matches, reason },
+      log: { target, matches, reason }
+    }
+  }
 
-	return { error: "target must be extension, clients, or tabs" }
+  return { error: "target must be extension, clients, or tabs" }
 }
 
 function normalizeStringArray(value) {
-	if (value === undefined) return []
-	if (!Array.isArray(value)) return []
-	return value.filter((item) => typeof item === "string" && item.length > 0)
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return []
+  return value.filter((item) => typeof item === "string" && item.length > 0)
 }
 
 function handleUpgrade(request, socket) {
@@ -284,14 +322,16 @@ function handleUpgrade(request, socket) {
   }
 
   const accept = crypto.createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64")
-  socket.write([
-    "HTTP/1.1 101 Switching Protocols",
-    "Upgrade: websocket",
-    "Connection: Upgrade",
-    `Sec-WebSocket-Accept: ${accept}`,
-    "",
-    ""
-  ].join("\r\n"))
+  socket.write(
+    [
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Accept: ${accept}`,
+      "",
+      ""
+    ].join("\r\n")
+  )
 
   const client = {
     socket,
@@ -355,11 +395,11 @@ function handleFrame(client, opcode, payload) {
   }
 
   if (opcode === 0x9) {
-    client.socket.write(writeFrame(payload, 0xA))
+    client.socket.write(writeFrame(payload, 0xa))
     return
   }
 
-  if (opcode === 0xA) return
+  if (opcode === 0xa) return
   if (opcode !== 0x1) return
 
   let message
@@ -390,6 +430,15 @@ function handleSocketMessage(client, message) {
     case "hmr:execute-js:result":
       completeExecute(message)
       logEvent("execute:result", { requestId: message.requestId, ok: Boolean(message.ok), target: message.target })
+      break
+    case "hmr:command:result":
+      completeExecute(message)
+      logEvent("command:result", {
+        requestId: message.requestId,
+        ok: Boolean(message.ok),
+        target: message.target,
+        command: message.command
+      })
       break
     default:
       logEvent("message", { type: message.type || "unknown" })
@@ -423,6 +472,34 @@ function executeInBackground(background, payload) {
   })
 }
 
+function commandInBackground(background, payload) {
+  const requestId = crypto.randomUUID()
+  const message = {
+    type: "hmr:command",
+    requestId,
+    target: payload.target,
+    command: payload.command,
+    payload: payload.payload,
+    tabId: payload.tabId,
+    allFrames: payload.allFrames
+  }
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingExecutes.delete(requestId)
+      reject(httpError(504, "Timed out waiting for command result"))
+    }, executeTimeoutMs)
+
+    pendingExecutes.set(requestId, { resolve, reject, timer, socket: background.socket })
+
+    if (!sendMessage(background, message)) {
+      clearTimeout(timer)
+      pendingExecutes.delete(requestId)
+      reject(httpError(503, "Background client disconnected"))
+    }
+  })
+}
+
 function completeExecute(message) {
   const pending = pendingExecutes.get(message.requestId)
   if (!pending) return
@@ -433,6 +510,7 @@ function completeExecute(message) {
     ok: Boolean(message.ok),
     requestId: message.requestId,
     target: message.target,
+    command: message.command,
     result: message.result,
     error: message.error
   })
@@ -522,9 +600,23 @@ function normalizeCount(value) {
 
 function validateExecuteBody(body) {
   if (!body || typeof body !== "object") return "Request body must be a JSON object"
-  if (!["popup", "page", "content", "options"].includes(body.target)) return "target must be popup, page, content, or options"
+  if (!["popup", "page", "content", "options"].includes(body.target))
+    return "target must be popup, page, content, or options"
   if (typeof body.code !== "string") return "code must be a string"
-  if (body.tabId !== undefined && (!Number.isInteger(body.tabId) || body.tabId < 0)) return "tabId must be a positive integer"
+  if (body.tabId !== undefined && (!Number.isInteger(body.tabId) || body.tabId < 0))
+    return "tabId must be a positive integer"
+  if (body.allFrames !== undefined && typeof body.allFrames !== "boolean") return "allFrames must be a boolean"
+  return ""
+}
+
+function validateCommandBody(body) {
+  if (!body || typeof body !== "object") return "Request body must be a JSON object"
+  if (!["background", "popup", "content", "options"].includes(body.target))
+    return "target must be background, popup, content, or options"
+  if (!["storage:get", "storage:set", "tabs:query", "tabs:reload", "dom:query"].includes(body.command))
+    return "command must be storage:get, storage:set, tabs:query, tabs:reload, or dom:query"
+  if (body.tabId !== undefined && (!Number.isInteger(body.tabId) || body.tabId < 0))
+    return "tabId must be a positive integer"
   if (body.allFrames !== undefined && typeof body.allFrames !== "boolean") return "allFrames must be a boolean"
   return ""
 }

@@ -1,4 +1,4 @@
-import { connectHmrClient } from "@/hmr/client"
+import { connectHmrClient } from "@chrome-ninja/hmr/client"
 import { handler as baiduHandler } from "./baidu"
 import { handler as biliHandler } from "./bilibili"
 

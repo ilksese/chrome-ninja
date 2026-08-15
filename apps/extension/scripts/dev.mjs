@@ -12,6 +12,10 @@ const hmrPort = process.env.PORT || "8787"
 const reloadUrls = process.env.CHROME_NINJA_HMR_RELOAD_URL ? [process.env.CHROME_NINJA_HMR_RELOAD_URL] : [`https://127.0.0.1:${hmrPort}/reload`, `http://127.0.0.1:${hmrPort}/reload`]
 const allContentScriptMatches = ["*://*/*"]
 const bossContentScriptMatches = ["*://*.zhipin.com/*", "*://*.bosszhipin.com/*"]
+const processPrefixes = {
+  extension: "[EXTENSION]",
+  hmr: "[HMR]"
+}
 
 let shuttingDown = false
 let exitCode = 0
@@ -24,11 +28,12 @@ const pendingChangedFiles = new Set()
 const watchers = startChangeWatchers()
 
 const children = [
-  start("hmr", ["--filter", "@chrome-ninja/hmr", "dev"]),
+  start("hmr", ["--filter", "@chrome-ninja/hmr", "dev"], { prefix: processPrefixes.hmr }),
   start("extension", ["--filter", "@chrome-ninja/extension", "dev:build"], {
     env: { VITE_CHROME_NINJA_HMR: "true" },
     onStdout: observeExtensionBuildOutput,
-    onStderr: observeExtensionBuildOutput
+    onStderr: observeExtensionBuildOutput,
+    prefix: processPrefixes.extension
   })
 ]
 
@@ -54,28 +59,47 @@ process.on("SIGTERM", () => shutdown(143))
 function start(name, args, options = {}) {
   const command = isWindows ? process.env.ComSpec || "cmd.exe" : pnpm
   const commandArgs = isWindows ? ["/d", "/s", "/c", pnpm, ...args] : args
-  const shouldPipeOutput = options.onStdout || options.onStderr
+  const stdout = createPrefixedWriter(process.stdout, options.prefix)
+  const stderr = createPrefixedWriter(process.stderr, options.prefix)
   const child = spawn(command, commandArgs, {
     cwd: repoRoot,
     env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR || "1", ...options.env },
-    stdio: shouldPipeOutput ? ["ignore", "pipe", "pipe"] : "inherit"
+    stdio: ["ignore", "pipe", "pipe"]
   })
 
   child.stdout?.on("data", (chunk) => {
-    process.stdout.write(chunk)
+    stdout(chunk)
     options.onStdout?.(chunk)
   })
   child.stderr?.on("data", (chunk) => {
-    process.stderr.write(chunk)
+    stderr(chunk)
     options.onStderr?.(chunk)
   })
 
   child.on("error", (error) => {
-    console.error(`[dev:${name}] failed to start`, error)
+    console.error(`${options.prefix || `[${name.toUpperCase()}]`} failed to start`, error)
     shutdown(1)
   })
 
   return { name, process: child }
+}
+
+function createPrefixedWriter(stream, prefix) {
+  let atLineStart = true
+  return (chunk) => {
+    for (const part of chunk.toString("utf8").split(/(\r?\n)/)) {
+      if (!part) continue
+      if (part === "\n" || part === "\r\n") {
+        stream.write(part)
+        atLineStart = true
+        continue
+      }
+
+      if (atLineStart && prefix) stream.write(`${prefix} `)
+      stream.write(part)
+      atLineStart = false
+    }
+  }
 }
 
 function shutdown(code) {
@@ -119,7 +143,7 @@ async function requestReload(action) {
 				body: JSON.stringify(action)
 			})
 			if (!response.ok) continue
-			console.log(`[dev:extension] requested ${describeReloadAction(action)}`)
+			console.log(`${processPrefixes.extension} requested ${describeReloadAction(action)}`)
 			return
 		} catch {
 			// Try the next local HMR URL.
@@ -176,8 +200,6 @@ function isExtensionReloadFile(file) {
 		file === "package.json" ||
 		file.startsWith("tsconfig") ||
 		file.startsWith("src/background/") ||
-		file === "src/hmr/background.ts" ||
-		file === "src/hmr/protocol.ts" ||
 		file.startsWith("src/store/") ||
 		file === "src/user-agent/index.ts" ||
 		file === "src/user-agent/boss-navigation.ts" ||
@@ -230,7 +252,7 @@ function watchPath(path, options, activeWatchers, isDirectory = false) {
 		})
 		activeWatchers.push(watcher)
 	} catch (error) {
-		console.warn(`[dev:extension] failed to watch ${path}`, error)
+		console.warn(`${processPrefixes.extension} failed to watch ${path}`, error)
 	}
 }
 
