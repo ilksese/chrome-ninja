@@ -12,11 +12,16 @@ export type BossSettingType = {
   enabled: boolean
 }
 
+export type RecorderOptionsType = {
+  enabled: boolean
+}
+
 export type UserAgentType = "default" | "chrome-desktop" | "chrome-android" | "safira-desktop" | "safira-ios"
 
 export type Options = {
   bilibili: BilibiliOptionsType
   baidu: BaiduSettingType
   boss: BossSettingType
+  recorder: RecorderOptionsType
   userAgent: UserAgentType
 }

@@ -4,9 +4,11 @@ import { DEFAULT_OPTIONS, mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
 import { applyUserAgentRule } from "@/user-agent"
 import { registerBossAntiDetectionBackground } from "@/user-agent/boss-navigation"
+import { registerRecorderBackground } from "@/recorder/background"
 
 ninjaLog("background runing")
 registerBossAntiDetectionBackground()
+registerRecorderBackground()
 connectHmrBackground()
 
 type StorageCache = {

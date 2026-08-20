@@ -13,6 +13,9 @@ export const DEFAULT_OPTIONS: Options = {
   },
   boss: {
     enabled: false
+  },
+  recorder: {
+    enabled: false
   }
 }
 
@@ -31,6 +34,10 @@ export function mergeOptions(options?: Partial<Options>): Options {
     boss: {
       ...DEFAULT_OPTIONS.boss,
       ...options?.boss
+    },
+    recorder: {
+      ...DEFAULT_OPTIONS.recorder,
+      ...options?.recorder
     }
   }
 }

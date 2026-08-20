@@ -32,6 +32,12 @@ const contentScriptFiles = async () => {
   return await getAllFiles("src/content-script")
 }
 
+const recorderScriptFiles = async () => {
+  return await getAllFiles("src/recorder").then((files) =>
+    files.filter((file) => file.endsWith(".css") || file.endsWith(".js"))
+  )
+}
+
 export default {
   name: env.mode === "staging" ? `[INTERNAL] ${name}` : displayName || name,
   description,
@@ -68,6 +74,12 @@ export default {
       js: ["src/content-script/index.ts"],
       matches: ["*://*/*"],
       run_at: "document_end"
+    },
+    {
+      all_frames: true,
+      js: ["src/recorder/content.ts"],
+      matches: ["*://*/*"],
+      run_at: "document_idle"
     }
   ],
   // Full options page
@@ -85,7 +97,7 @@ export default {
   web_accessible_resources: [
     {
       matches: ["*://*/*"],
-      resources: [...(await contentScriptFiles()), "src/user-agent/boss-anti-detection.js"]
+      resources: [...(await contentScriptFiles()), ...(await recorderScriptFiles()), "src/user-agent/boss-anti-detection.js"]
     }
   ],
   icons: {

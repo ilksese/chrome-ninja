@@ -21,6 +21,9 @@ const validationSchema = v.object({
   }),
   boss: v.object({
     enabled: v.boolean()
+  }),
+  recorder: v.object({
+    enabled: v.boolean()
   })
 })
 
