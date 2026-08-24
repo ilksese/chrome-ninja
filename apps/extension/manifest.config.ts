@@ -78,7 +78,9 @@ export default {
     {
       all_frames: true,
       js: ["src/recorder/content.ts"],
-      matches: ["*://*/*"],
+      match_about_blank: true,
+      match_origin_as_fallback: true,
+      matches: ["<all_urls>"],
       run_at: "document_idle"
     }
   ],
@@ -96,7 +98,7 @@ export default {
   permissions: ["storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation"],
   web_accessible_resources: [
     {
-      matches: ["*://*/*"],
+      matches: ["<all_urls>"],
       resources: [...(await contentScriptFiles()), ...(await recorderScriptFiles()), "src/user-agent/boss-anti-detection.js"]
     }
   ],

@@ -158,6 +158,7 @@ const Home = ({ layout }: HomeProps) => {
   const [selectedUserAgent, setSelectedUserAgent] = useState<UserAgentType>(options.userAgent)
   const [isApplying, setIsApplying] = useState(false)
   const [isBossApplying, setIsBossApplying] = useState(false)
+  const [isRecorderApplying, setIsRecorderApplying] = useState(false)
   const [error, setError] = useState("")
   const triggerRef = useRef<HTMLButtonElement>(null)
   const firstRadioRef = useRef<HTMLInputElement>(null)
@@ -230,6 +231,18 @@ const Home = ({ layout }: HomeProps) => {
     }
   }
 
+  const toggleRecorder = async () => {
+    setIsRecorderApplying(true)
+    setError("")
+    try {
+      await setOptions({ ...options, recorder: { ...options.recorder, enabled: !options.recorder.enabled } })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "步骤录制开关保存失败")
+    } finally {
+      setIsRecorderApplying(false)
+    }
+  }
+
   return (
     <div className={cn("Home relative", isOptions ? "grid grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)] gap-6 max-[900px]:block" : "space-y-3")}>
       <section className={cn("overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(16,24,40,0.12)]", isOptions && "grid grid-cols-[0.92fr_1.08fr] max-[900px]:block") }>
@@ -276,6 +289,24 @@ const Home = ({ layout }: HomeProps) => {
               </span>
               <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.boss.enabled ? "bg-[#101828]" : "bg-slate-300")} aria-hidden="true">
                 <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.boss.enabled ? "translate-x-5" : "translate-x-0.5")} />
+              </span>
+            </button>
+
+            <button
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60"
+              type="button"
+              role="switch"
+              aria-label="步骤录制总开关"
+              aria-checked={options.recorder.enabled}
+              disabled={isRecorderApplying}
+              onClick={toggleRecorder}>
+              <span className={cn("grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm", options.recorder.enabled ? "bg-[#b42318] text-white" : "bg-slate-100 text-slate-500")}>{options.recorder.enabled ? "ON" : "OFF"}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">步骤录制</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">{options.recorder.enabled ? "页面面板已开启" : "默认关闭"}</span>
+              </span>
+              <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.recorder.enabled ? "bg-[#b42318]" : "bg-slate-300")} aria-hidden="true">
+                <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.recorder.enabled ? "translate-x-5" : "translate-x-0.5")} />
               </span>
             </button>
           </div>

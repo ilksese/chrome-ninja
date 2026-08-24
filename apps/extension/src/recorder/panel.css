@@ -25,25 +25,27 @@
   box-sizing: border-box;
 }
 
-[data-recorder-panel] button {
-  font-family: inherit;
-  font-size: inherit;
-  cursor: pointer;
-  border: none;
-  background: none;
-  -webkit-tap-highlight-color: transparent;
-}
+@layer base {
+  [data-recorder-panel] button {
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    -webkit-tap-highlight-color: transparent;
+  }
 
-[data-recorder-panel] button:disabled {
-  cursor: not-allowed;
+  [data-recorder-panel] button:disabled {
+    cursor: not-allowed;
+  }
+
+  [data-recorder-panel] input {
+    font-family: inherit;
+  }
 }
 
 [data-recorder-panel] button:focus-visible,
 [data-recorder-panel] input:focus-visible {
   outline: 2px solid #0077ff;
   outline-offset: 2px;
-}
-
-[data-recorder-panel] input {
-  font-family: inherit;
 }

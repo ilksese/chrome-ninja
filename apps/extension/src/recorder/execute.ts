@@ -2,52 +2,73 @@ import type { RecorderLocator, RecorderStep } from "./types"
 import type { RecorderReplayStepResponse } from "./messages"
 import { REPLAY_WAIT_MS } from "./storage"
 
-const INTERACTIVE_SELECTOR = [
+const CLICKABLE_SELECTOR = [
   "a",
   "button",
   "input",
   "textarea",
   "select",
+  "label",
+  "summary",
   "[role=button]",
+  "[role=link]",
+  "[role=checkbox]",
+  "[role=radio]",
+  "[role=switch]",
+  "[role=menuitem]",
+  "[role=option]",
+  "[role=tab]",
   "[contenteditable]",
+  "[tabindex]",
+  "[onclick]",
 ].join(",")
 
 function matchesText(el: Element, text: string): boolean {
   return Boolean(el.textContent && el.textContent.includes(text))
 }
 
-function findByCss(el: Element, css: string): Element | null {
+function findBySelector(el: Element, selector: string): Element | null {
   try {
-    return el.querySelector(css)
+    if (el.matches(selector)) return el
+    return el.querySelector(selector)
   } catch {
     return null
   }
 }
 
 function locate(el: Element, target: RecorderLocator): Element | null {
-  if (target.id && (el.querySelector(`#${target.id}`) || el.querySelector(`[id="${target.id}"]`))) {
-    return el.querySelector(`#${target.id}`) || el.querySelector(`[id="${target.id}"]`)
+  if (target.id) {
+    const found = findBySelector(el, `#${CSS.escape(target.id)}`)
+    if (found) return found
   }
   if (target.ariaLabel) {
-    const found = el.querySelector(`[aria-label="${target.ariaLabel}"]`)
+    const found = findBySelector(el, `[aria-label="${CSS.escape(target.ariaLabel)}"]`)
     if (found) return found
   }
   if (target.name) {
-    const found = el.querySelector(`[name="${target.name}"]`)
+    const found = findBySelector(el, `[name="${CSS.escape(target.name)}"]`)
+    if (found) return found
+  }
+  if (target.path) {
+    const found = findBySelector(el, target.path)
     if (found) return found
   }
   if (target.role && target.text) {
-    const byRole = Array.from(el.querySelectorAll(`[role="${target.role}"]`))
+    const byRole = Array.from(el.querySelectorAll(`[role="${CSS.escape(target.role)}"]`))
     const found = byRole.find((n) => matchesText(n, target.text!))
     if (found) return found
   }
   if (target.css) {
-    const found = findByCss(el, target.css)
+    const found = findBySelector(el, target.css)
     if (found) return found
   }
   if (target.text) {
-    const candidates = Array.from(el.querySelectorAll(INTERACTIVE_SELECTOR))
+    const candidates = Array.from(el.querySelectorAll(CLICKABLE_SELECTOR))
     const found = candidates.find((n) => matchesText(n, target.text!))
+    if (found) return found
+  }
+  if (/^[a-z][a-z\d-]*$/i.test(target.tag)) {
+    const found = findBySelector(el, target.tag)
     if (found) return found
   }
   return null

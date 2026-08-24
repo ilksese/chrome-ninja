@@ -6,6 +6,7 @@ export type RecorderLocator = {
   role?: string
   text?: string
   css?: string
+  path?: string
 }
 
 export type RecorderBaseStep = {
