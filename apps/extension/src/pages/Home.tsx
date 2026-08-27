@@ -3,8 +3,6 @@ import { useAtom } from "jotai"
 import { createPortal } from "preact/compat"
 import { useEffect, useRef, useState } from "preact/hooks"
 import logoIcon from "@assets/mdlogo.png"
-import baiduIcon from "@assets/svg/baidu.svg"
-import bilibiliIcon from "@assets/svg/bilibili.svg"
 import { optionsAtom } from "@/store/options"
 import type { UserAgentType } from "@/types"
 import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
@@ -33,21 +31,23 @@ function BrowserMockup({ compact = false }: { compact?: boolean }) {
         <span className="ml-2 h-5 flex-1 rounded-md bg-slate-100 px-2 text-[10px] leading-5 text-slate-500">chrome-ninja.local</span>
       </div>
       <div className={cn("grid", compact ? "gap-2 p-2" : "gap-3 p-3")}>
-        <div className={cn("rounded-xl bg-[#101828] text-white", compact ? "p-2.5" : "p-3")}>
+        <div className={cn("rounded-xl border border-slate-200 bg-slate-50", compact ? "p-2.5" : "p-3")}>
           <div className={cn("flex items-center gap-2", compact ? "mb-2" : "mb-3")}>
-            <img className="size-5" src={bilibiliIcon} alt="" />
-            <span className="text-xs font-medium text-white/82">Bilibili</span>
-            <span className="ml-auto rounded-full bg-[#0077ff] px-2 py-0.5 text-[10px] font-medium">1080P+</span>
+            <span className="grid size-5 place-items-center rounded-md bg-[#101828] text-[10px] font-semibold text-white">CN</span>
+            <span className="text-xs font-medium text-slate-700">首页概览</span>
+            <span className="ml-auto rounded-full bg-[#e8f2ff] px-2 py-0.5 text-[10px] font-medium text-[#005bd1]">Ready</span>
           </div>
-          <div className="aspect-video rounded-lg bg-[linear-gradient(135deg,#18243a,#0077ff)] p-2">
-            <div className="h-full rounded-md border border-white/18 bg-white/10" />
+          <div className="space-y-1.5">
+            <span className="block h-2 rounded-full bg-slate-300" />
+            <span className="block h-2 w-4/5 rounded-full bg-slate-200" />
+            <span className="block h-2 w-2/3 rounded-full bg-[#ffdfcc]" />
           </div>
         </div>
         <div className={cn("grid grid-cols-[1fr_76px]", compact ? "gap-2" : "gap-3")}>
           <div className={cn("rounded-xl border border-slate-200 bg-slate-50", compact ? "p-2.5" : "p-3")}>
             <div className="mb-2 flex items-center gap-2">
-              <img className="size-5" src={baiduIcon} alt="" />
-              <span className="text-xs font-medium text-slate-600">Baidu</span>
+              <span className="grid size-5 place-items-center rounded-md bg-[#e8f2ff] text-[10px] font-semibold text-[#005bd1]">UA</span>
+              <span className="text-xs font-medium text-slate-600">身份切换</span>
             </div>
             <div className="space-y-1.5">
               <span className="block h-2 rounded-full bg-slate-300" />
@@ -115,19 +115,19 @@ function IntroDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
           <BrowserMockup />
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] p-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="mb-2 flex items-center gap-2">
-                <img className="size-5" src={bilibiliIcon} alt="" />
-                <span className="text-xs font-medium text-slate-700">Bilibili</span>
+                <span className="grid size-5 place-items-center rounded-md bg-[#101828] text-[10px] font-semibold text-white">UA</span>
+                <span className="text-xs font-medium text-slate-700">身份切换</span>
               </div>
-              <p className="text-sm font-semibold leading-5 text-slate-950">默认高画质</p>
+              <p className="text-sm font-semibold leading-5 text-slate-950">一键切换浏览器身份</p>
             </div>
-            <div className="rounded-xl border border-[#ffd0b8] bg-[#fff3ec] p-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="mb-2 flex items-center gap-2">
-                <img className="size-5" src={baiduIcon} alt="" />
-                <span className="text-xs font-medium text-slate-700">Baidu</span>
+                <span className="grid size-5 place-items-center rounded-md bg-[#e8f2ff] text-[10px] font-semibold text-[#005bd1]">OK</span>
+                <span className="text-xs font-medium text-slate-700">默认状态</span>
               </div>
-              <p className="text-sm font-semibold leading-5 text-slate-950">结果更清爽</p>
+              <p className="text-sm font-semibold leading-5 text-slate-950">常用能力已就绪</p>
             </div>
           </div>
 
@@ -311,21 +311,8 @@ const Home = ({ layout }: HomeProps) => {
             </button>
           </div>
 
-          <div className={cn("mt-3 grid gap-2", isOptions ? "grid-cols-2" : "grid-cols-2 max-[420px]:grid-cols-1") }>
-            <div className="rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-3 py-2.5">
-              <div className="mb-1.5 flex items-center gap-2">
-                <img className="size-5" src={bilibiliIcon} alt="" />
-                <span className="text-xs font-medium text-slate-700">Bilibili</span>
-              </div>
-              <p className="text-sm font-semibold leading-5 text-slate-950">默认高画质</p>
-            </div>
-            <div className="rounded-xl border border-[#ffd0b8] bg-[#fff3ec] px-3 py-2.5">
-              <div className="mb-1.5 flex items-center gap-2">
-                <img className="size-5" src={baiduIcon} alt="" />
-                <span className="text-xs font-medium text-slate-700">Baidu</span>
-              </div>
-              <p className="text-sm font-semibold leading-5 text-slate-950">结果更清爽</p>
-            </div>
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <p className="text-xs font-medium text-slate-500">首页只保留通用控制项，网站能力放到设置页统一管理。</p>
           </div>
         </div>
 
