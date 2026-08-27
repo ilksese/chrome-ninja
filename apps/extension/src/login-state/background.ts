@@ -13,6 +13,8 @@ import type {
 } from "./types"
 
 type ChromeCookieWithPartitionKey = chrome.cookies.Cookie & { partitionKey?: unknown }
+type ChromeCookiePartitionKey = { topLevelSite?: string }
+type OriginStorageResult = chrome.scripting.InjectionResult<PlaywrightOriginStorage>
 
 export function registerLoginStateExportBackground() {
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -86,12 +88,12 @@ async function exportLoginState(request: LoginStateExportRequest): Promise<Login
 
     const origin = url.origin
     const host = url.hostname.toLowerCase()
-    const cookies = await collectCookies(request.tabId, host, warnings)
-    const originStorage = await collectOriginStorage(request.tabId, origin, request.includeIndexedDB)
+    const origins = await collectOriginStorage(request.tabId, origin, request.includeIndexedDB)
+    const cookies = await collectCookies(request.tabId, origins.map((originStorage) => new URL(originStorage.origin).hostname.toLowerCase()), warnings)
 
     return {
       ok: true,
-      state: { cookies, origins: [originStorage] },
+      state: { cookies, origins },
       warnings: warnings.length ? warnings : undefined,
       filename: createFilename(host)
     }
@@ -117,23 +119,24 @@ function parseHttpUrl(value: string) {
   }
 }
 
-async function collectCookies(tabId: number, host: string, warnings: string[]) {
+async function collectCookies(tabId: number, hosts: string[], warnings: string[]) {
   const stores = await chrome.cookies.getAllCookieStores()
   const store = stores.find((item) => item.tabIds.includes(tabId))
   const cookies = store ? await chrome.cookies.getAll({ storeId: store.id }) : await chrome.cookies.getAll({})
 
-  return cookies.flatMap((cookie) => toPlaywrightCookie(cookie, host, warnings))
+  return cookies.flatMap((cookie) => toPlaywrightCookie(cookie, hosts, warnings))
 }
 
-function toPlaywrightCookie(cookie: chrome.cookies.Cookie, host: string, warnings: string[]): PlaywrightCookie[] {
+function toPlaywrightCookie(cookie: chrome.cookies.Cookie, hosts: string[], warnings: string[]): PlaywrightCookie[] {
   const partitionedCookie = cookie as ChromeCookieWithPartitionKey
-  if (partitionedCookie.partitionKey) {
-    warnings.push(`已跳过分区 Cookie: ${cookie.name}`)
+  const partitionKey = toPlaywrightPartitionKey(partitionedCookie.partitionKey)
+  if (partitionedCookie.partitionKey && !partitionKey) {
+    warnings.push(`已跳过无法映射的分区 Cookie: ${cookie.name}`)
     return []
   }
 
   const cookieDomain = cookie.domain.replace(/^\./, "").toLowerCase()
-  if (cookie.hostOnly ? cookieDomain !== host : host !== cookieDomain && !host.endsWith(`.${cookieDomain}`)) {
+  if (!hosts.some((host) => (cookie.hostOnly ? cookieDomain === host : host === cookieDomain || host.endsWith(`.${cookieDomain}`)))) {
     return []
   }
 
@@ -146,19 +149,25 @@ function toPlaywrightCookie(cookie: chrome.cookies.Cookie, host: string, warning
       expires: cookie.expirationDate ?? -1,
       httpOnly: cookie.httpOnly,
       secure: cookie.secure,
-      sameSite: mapSameSite(cookie.sameSite, cookie.name, warnings)
+      sameSite: mapSameSite(cookie.sameSite),
+      ...(partitionKey ? { partitionKey } : {})
     }
   ]
 }
 
-function mapSameSite(sameSite: chrome.cookies.SameSiteStatus, cookieName: string, warnings: string[]): PlaywrightCookie["sameSite"] {
+function toPlaywrightPartitionKey(value: unknown) {
+  if (!value || typeof value !== "object") return undefined
+  const { topLevelSite } = value as ChromeCookiePartitionKey
+  return typeof topLevelSite === "string" && topLevelSite ? topLevelSite : undefined
+}
+
+function mapSameSite(sameSite: chrome.cookies.SameSiteStatus): PlaywrightCookie["sameSite"] {
   switch (sameSite) {
     case "strict":
       return "Strict"
     case "no_restriction":
       return "None"
     case "unspecified":
-      warnings.push(`Cookie ${cookieName} 的 SameSite 未指定，已按 Lax 导出`)
       return "Lax"
     case "lax":
     default:
@@ -166,17 +175,42 @@ function mapSameSite(sameSite: chrome.cookies.SameSiteStatus, cookieName: string
   }
 }
 
-async function collectOriginStorage(tabId: number, expectedOrigin: string, includeIndexedDB: boolean): Promise<PlaywrightOriginStorage> {
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId },
+async function collectOriginStorage(tabId: number, expectedOrigin: string, includeIndexedDB: boolean): Promise<PlaywrightOriginStorage[]> {
+  const frameStorages = await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
     func: collectOriginStorageInPage,
-    args: [includeIndexedDB]
+    args: [false]
   })
-  const storage = result?.result
-  if (!storage || storage.origin !== expectedOrigin) {
+
+  const originsByFrame = new Map<string, OriginStorageResult>()
+  for (const result of frameStorages) {
+    const storage = result.result
+    if (!storage || !parseHttpUrl(storage.origin)) continue
+    originsByFrame.set(storage.origin, result)
+  }
+
+  if (!originsByFrame.has(expectedOrigin)) {
     throw new Error("目标页面 origin 校验失败")
   }
-  return storage
+
+  if (!includeIndexedDB) {
+    return Array.from(originsByFrame.values(), ({ result }) => result!)
+  }
+
+  return await Promise.all(
+    Array.from(originsByFrame.values(), async (frameStorage) => {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId, frameIds: [frameStorage.frameId] },
+        func: collectOriginStorageInPage,
+        args: [true]
+      })
+      const storage = result?.result
+      if (!storage || storage.origin !== frameStorage.result?.origin) {
+        throw new Error("目标页面 origin 校验失败")
+      }
+      return storage
+    })
+  )
 }
 
 async function collectOriginStorageInPage(includeIndexedDB: boolean): Promise<PlaywrightOriginStorage> {
@@ -235,8 +269,7 @@ async function collectOriginStorageInPage(includeIndexedDB: boolean): Promise<Pl
   }
 
   function keyPathFields(keyPath: string | string[] | null) {
-    if (Array.isArray(keyPath)) return { keyPathArray: keyPath }
-    if (typeof keyPath === "string") return { keyPath }
+    if (Array.isArray(keyPath) || typeof keyPath === "string") return { keyPath }
     return {}
   }
 

@@ -1,7 +1,12 @@
+import type { ComponentChildren } from "preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
 import type { LoginStateExportResponse, LoginStateTab, LoginStateTabsResponse } from "@/login-state/types"
 
-function LoginStateExport() {
+type LoginStateExportProps = {
+  renderActions?: (actions: ComponentChildren) => ComponentChildren
+}
+
+function LoginStateExport({ renderActions }: LoginStateExportProps) {
   const [tabs, setTabs] = useState<LoginStateTab[]>([])
   const [selectedTabId, setSelectedTabId] = useState<number | undefined>()
   const [includeIndexedDB, setIncludeIndexedDB] = useState(false)
@@ -65,6 +70,16 @@ function LoginStateExport() {
     }
   }
 
+  const actions = (
+    <button
+      className="w-full rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:cursor-not-allowed disabled:opacity-50"
+      type="button"
+      disabled={!canExport}
+      onClick={() => void exportState()}>
+      {isExporting ? "导出中" : "导出所选标签登录态"}
+    </button>
+  )
+
   return (
     <section className="mt-4 border-t border-slate-200 pt-4">
       <div className="mb-3">
@@ -105,13 +120,7 @@ function LoginStateExport() {
       {error && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-4 text-red-700">{error}</p>}
       {warnings.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">{warnings.join("；")}</p>}
 
-      <button
-        className="mt-3 w-full rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:cursor-not-allowed disabled:opacity-50"
-        type="button"
-        disabled={!canExport}
-        onClick={() => void exportState()}>
-        {isExporting ? "导出中" : "导出所选标签登录态"}
-      </button>
+      {renderActions ? renderActions(actions) : <div className="mt-6">{actions}</div>}
     </section>
   )
 }
@@ -122,6 +131,10 @@ function sendMessage<T>(message: unknown) {
       const error = chrome.runtime.lastError
       if (error) {
         reject(new Error(error.message))
+        return
+      }
+      if (response == null) {
+        reject(new Error("后台未返回登录态导出结果，请刷新扩展后重试"))
         return
       }
       resolve(response)

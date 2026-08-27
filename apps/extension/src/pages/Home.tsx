@@ -1,8 +1,10 @@
 import { cn } from "@chrome-ninja/utils"
 import { useAtom } from "jotai"
-import { createPortal } from "preact/compat"
+import type { ComponentChildren } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import logoIcon from "@assets/mdlogo.png"
+import Dialog from "@components/Dialog"
+import LoginStateExport from "@components/settings/LoginStateExport"
 import { optionsAtom } from "@/store/options"
 import type { UserAgentType } from "@/types"
 import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
@@ -68,51 +70,25 @@ function BrowserMockup({ compact = false }: { compact?: boolean }) {
 function IntroDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    requestAnimationFrame(() => closeButtonRef.current?.focus())
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose()
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [onClose, open])
-
-  if (!open) {
-    return null
-  }
-
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] grid place-items-center bg-slate-950/50 p-4" role="presentation" onClick={onClose}>
-      <section
-        className="flex max-h-[95vh] w-full max-w-[420px] flex-col overflow-hidden rounded-[16px] border border-white/12 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="home-intro-title"
-        onClick={(event) => event.stopPropagation()}>
-        <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#101828,#123b66_62%,#0c5fb8)] px-5 py-4 text-white">
-          <div className="flex items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-xl border border-white/12 bg-white/10 shadow-sm">
-              <img className="size-8" src={logoIcon} alt="chrome ninja" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-white/62">chrome ninja</span>
-              <h2 id="home-intro-title" className="mt-1 text-lg font-semibold leading-6">
-                清爽浏览，默认高效
-              </h2>
-            </span>
-          </div>
-          <p className="mt-3 text-sm leading-5 text-white/78">B 站高画质、搜索减干扰、UA 身份切换。</p>
+  return (
+    <Dialog open={open} titleId="home-intro-title" onClose={onClose} initialFocusRef={closeButtonRef} panelClassName="border border-white/12">
+      <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#101828,#123b66_62%,#0c5fb8)] px-5 py-4 text-white">
+        <div className="flex items-center gap-3">
+          <span className="grid size-11 place-items-center rounded-xl border border-white/12 bg-white/10 shadow-sm">
+            <img className="size-8" src={logoIcon} alt="chrome ninja" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-white/62">chrome ninja</span>
+            <h2 id="home-intro-title" className="mt-1 text-lg font-semibold leading-6">
+              清爽浏览，默认高效
+            </h2>
+          </span>
         </div>
+        <p className="mt-3 text-sm leading-5 text-white/78">B 站高画质、搜索减干扰、UA 身份切换。</p>
+      </div>
 
-        <div className="min-h-0 space-y-3 overflow-y-auto p-5">
-          <BrowserMockup />
+      <div className="min-h-0 space-y-3 overflow-y-auto p-5">
+        <BrowserMockup />
 
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -145,15 +121,18 @@ function IntroDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
             </button>
           </div>
         </div>
-      </section>
-    </div>,
-    document.body
+    </Dialog>
   )
+}
+
+function DialogActions({ children }: { children: ComponentChildren }) {
+  return <div className="mt-6">{children}</div>
 }
 
 const Home = ({ layout }: HomeProps) => {
   const [options, setOptions] = useAtom(optionsAtom)
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
+  const [isLoginStateOpen, setIsLoginStateOpen] = useState(false)
   const [hasSeenIntro, setHasSeenIntro] = useState<boolean | null>(null)
   const [selectedUserAgent, setSelectedUserAgent] = useState<UserAgentType>(options.userAgent)
   const [isApplying, setIsApplying] = useState(false)
@@ -161,6 +140,7 @@ const Home = ({ layout }: HomeProps) => {
   const [isRecorderApplying, setIsRecorderApplying] = useState(false)
   const [error, setError] = useState("")
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const loginStateTriggerRef = useRef<HTMLButtonElement>(null)
   const firstRadioRef = useRef<HTMLInputElement>(null)
   const activeUserAgent = getUserAgentOption(options.userAgent)
   const selectedUserAgentOption = getUserAgentOption(selectedUserAgent)
@@ -189,21 +169,10 @@ const Home = ({ layout }: HomeProps) => {
     setIsUserAgentOpen(true)
   }
 
-  useEffect(() => {
-    if (!isUserAgentOpen) {
-      return
-    }
-
-    requestAnimationFrame(() => firstRadioRef.current?.focus())
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeUserAgentDialog()
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [isUserAgentOpen])
+  const closeLoginStateDialog = () => {
+    setIsLoginStateOpen(false)
+    requestAnimationFrame(() => loginStateTriggerRef.current?.focus())
+  }
 
   const confirmUserAgent = async () => {
     setIsApplying(true)
@@ -309,10 +278,21 @@ const Home = ({ layout }: HomeProps) => {
                 <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.recorder.enabled ? "translate-x-5" : "translate-x-0.5")} />
               </span>
             </button>
-          </div>
 
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-            <p className="text-xs font-medium text-slate-500">首页只保留通用控制项，网站能力放到设置页统一管理。</p>
+            {!isOptions && (
+              <button
+                ref={loginStateTriggerRef}
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
+                type="button"
+                onClick={() => setIsLoginStateOpen(true)}>
+                <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">JSON</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-950">登录态导出</span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-500">导出 cookies 和本地存储</span>
+                </span>
+                <span className="text-2xl leading-none text-[#005bd1]">›</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -326,14 +306,31 @@ const Home = ({ layout }: HomeProps) => {
 
       </section>
 
-      {isUserAgentOpen && (
-        <div className="absolute inset-0 z-10 grid place-items-center bg-slate-950/48 p-4" role="presentation" onClick={closeUserAgentDialog}>
-          <section
-            className="w-full max-w-[335px] overflow-hidden rounded-[14px] bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="user-agent-title"
-            onClick={(event) => event.stopPropagation()}>
+      <Dialog
+        open={isUserAgentOpen}
+        titleId="user-agent-title"
+        onClose={closeUserAgentDialog}
+        initialFocusRef={firstRadioRef}
+        className="absolute z-10 bg-slate-950/48"
+        panelClassName="max-w-[335px] rounded-[14px] shadow-[0_24px_70px_rgba(15,23,42,0.28)]"
+        actions={(
+          <div className="flex gap-3 border-t border-slate-200 p-4 pt-0">
+            <button
+              className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+              type="button"
+              disabled={isApplying}
+              onClick={closeUserAgentDialog}>
+              取消
+            </button>
+            <button
+              className="flex-1 rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:opacity-60"
+              type="button"
+              disabled={isApplying}
+              onClick={confirmUserAgent}>
+              {isApplying ? "应用中" : "确认"}
+            </button>
+          </div>
+        )}>
             <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#101828,#123b66_62%,#0c5fb8)] px-4 py-3 text-white">
               <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/62">identity switch</span>
               <h2 id="user-agent-title" className="mt-1 text-base font-semibold leading-5">
@@ -366,26 +363,29 @@ const Home = ({ layout }: HomeProps) => {
             </div>
 
             {error && <p className="px-4 pb-1 text-xs text-red-600">{error}</p>}
+      </Dialog>
 
-            <div className="flex gap-3 border-t border-slate-200 p-4">
-              <button
-                className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
-                type="button"
-                disabled={isApplying}
-                onClick={closeUserAgentDialog}>
-                取消
-              </button>
-              <button
-                className="flex-1 rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:opacity-60"
-                type="button"
-                disabled={isApplying}
-                onClick={confirmUserAgent}>
-                {isApplying ? "应用中" : "确认"}
-              </button>
-            </div>
-          </section>
+      <Dialog
+        open={isLoginStateOpen}
+        titleId="login-state-title"
+        onClose={closeLoginStateDialog}
+        className="absolute z-10 bg-slate-950/48"
+        panelClassName="max-h-[92vh] max-w-[335px] overflow-y-auto rounded-[14px] p-4 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <div className="flex items-start justify-between gap-3">
+          <span className="min-w-0">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#005bd1]">storage state</span>
+            <h2 id="login-state-title" className="mt-1 text-base font-semibold leading-5 text-slate-950">登录态导出</h2>
+          </span>
+          <button
+            className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-lg leading-none text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            type="button"
+            aria-label="关闭登录态导出"
+            onClick={closeLoginStateDialog}>
+            ×
+          </button>
         </div>
-      )}
+        <LoginStateExport renderActions={(actions) => <DialogActions>{actions}</DialogActions>} />
+      </Dialog>
 
       <IntroDialog open={shouldShowIntro} onClose={dismissIntro} />
     </div>

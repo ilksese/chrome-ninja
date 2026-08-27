@@ -28,6 +28,7 @@ export type PlaywrightCookie = {
   httpOnly: boolean
   secure: boolean
   sameSite: "Strict" | "Lax" | "None"
+  partitionKey?: string
 }
 
 export type PlaywrightLocalStorageItem = {
@@ -37,8 +38,7 @@ export type PlaywrightLocalStorageItem = {
 
 export type PlaywrightIndexedDBIndex = {
   name: string
-  keyPath?: string
-  keyPathArray?: string[]
+  keyPath?: string | string[]
   multiEntry: boolean
   unique: boolean
 }
@@ -51,8 +51,7 @@ export type PlaywrightIndexedDBRecord = {
 export type PlaywrightIndexedDBObjectStore = {
   name: string
   autoIncrement: boolean
-  keyPath?: string
-  keyPathArray?: string[]
+  keyPath?: string | string[]
   indexes: PlaywrightIndexedDBIndex[]
   records: PlaywrightIndexedDBRecord[]
 }
