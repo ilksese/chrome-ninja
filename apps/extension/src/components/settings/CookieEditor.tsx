@@ -139,6 +139,21 @@ function buildCookieDetails(cookie: chrome.cookies.Cookie, url: string, value: s
   return details
 }
 
+function buildCookieRemoveDetails(cookie: chrome.cookies.Cookie, fallbackUrl: string) {
+  const details: Parameters<typeof chrome.cookies.remove>[0] & { partitionKey?: { topLevelSite: string } } = {
+    url: getCookieUrl(cookie, fallbackUrl),
+    name: cookie.name,
+    storeId: cookie.storeId
+  }
+
+  const partitionKey = getPartitionKey(cookie)
+  if (partitionKey) {
+    details.partitionKey = partitionKey
+  }
+
+  return details
+}
+
 function getCookieUrl(cookie: chrome.cookies.Cookie, fallbackUrl: string) {
   const fallback = new URL(fallbackUrl)
   const host = cookie.domain.replace(/^\./, "") || fallback.hostname
@@ -212,7 +227,7 @@ function CookieRow({
   pageUrl: string
   onSaved: (id: string, value: string) => void
   onDirty: () => void
-  onToggle: (entry: CookieEntry, enabled: boolean) => void
+  onToggle: (entry: CookieEntry, enabled: boolean, draft: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(entry.draft)
@@ -307,13 +322,13 @@ function CookieRow({
           tabIndex={0}
           onClick={(event) => {
             event.stopPropagation()
-            onToggle(entry, !entry.enabled)
+            onToggle(entry, !entry.enabled, draft)
           }}
           onKeyDown={(event) => {
             if (event.key !== " " && event.key !== "Enter") return
             event.preventDefault()
             event.stopPropagation()
-            onToggle(entry, !entry.enabled)
+            onToggle(entry, !entry.enabled, draft)
           }}>
           <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", entry.enabled ? "translate-x-5" : "translate-x-0.5")} />
         </span>
@@ -478,13 +493,25 @@ export default function CookieEditor() {
 
     try {
       const targetUrl = pageUrl || snapshot.pageUrl
-      await Promise.all(snapshot.entries.map((entry) => chrome.cookies.set(buildCookieDetails(entry.cookie, targetUrl, entry.draft))))
+      await Promise.all(
+        snapshot.entries.map((entry) => {
+          return entry.enabled
+            ? chrome.cookies.set(buildCookieDetails(entry.cookie, targetUrl, entry.draft))
+            : chrome.cookies.remove(buildCookieRemoveDetails(entry.cookie, targetUrl))
+        })
+      )
       const [snapshots, disabledMap] = await Promise.all([
         readStorageMap<CookieSnapshot>(COOKIE_ORIGINAL_STORAGE_KEY),
         readStorageMap<CookieEntry[]>(COOKIE_DISABLED_STORAGE_KEY)
       ])
-      delete snapshots[getSnapshotKey(snapshot.pageUrl)]
-      delete disabledMap[getSnapshotKey(snapshot.pageUrl)]
+      const restoredDisabledEntries = snapshot.entries.filter((entry) => !entry.enabled)
+      const snapshotKey = getSnapshotKey(snapshot.pageUrl)
+      delete snapshots[snapshotKey]
+      if (restoredDisabledEntries.length > 0) {
+        disabledMap[snapshotKey] = restoredDisabledEntries
+      } else {
+        delete disabledMap[snapshotKey]
+      }
       await Promise.all([
         writeStorageMap(COOKIE_ORIGINAL_STORAGE_KEY, snapshots),
         writeStorageMap(COOKIE_DISABLED_STORAGE_KEY, disabledMap)
@@ -517,17 +544,18 @@ export default function CookieEditor() {
     await writeStorageMap(COOKIE_DISABLED_STORAGE_KEY, disabledMap)
   }, [pageUrl])
 
-  const handleToggle = useCallback((entry: CookieEntry, enabled: boolean) => {
+  const handleToggle = useCallback((entry: CookieEntry, enabled: boolean, draft: string) => {
     void (async () => {
       await ensureOriginalSnapshot()
-      const nextEntries = entries.map((item) => (item.id === entry.id ? { ...item, enabled } : item))
+      const nextEntry = { ...entry, draft, enabled, cookie: { ...entry.cookie, value: draft } }
+      const nextEntries = entries.map((item) => (item.id === entry.id ? nextEntry : item))
       setEntries(nextEntries)
       await persistDisabledEntries(nextEntries)
 
       if (enabled) {
-        await chrome.cookies.set(buildCookieDetails(entry.cookie, pageUrl, entry.draft))
+        await chrome.cookies.set(buildCookieDetails(nextEntry.cookie, pageUrl, nextEntry.draft))
       } else {
-        await chrome.cookies.remove({ url: getCookieUrl(entry.cookie, pageUrl), name: entry.cookie.name, storeId: entry.cookie.storeId })
+        await chrome.cookies.remove(buildCookieRemoveDetails(nextEntry.cookie, pageUrl))
       }
     })().catch((reason) => {
       setError(reason instanceof Error ? reason.message : "切换 cookie 状态失败")
