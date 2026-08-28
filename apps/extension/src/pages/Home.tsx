@@ -384,7 +384,7 @@ const Home = ({ layout }: HomeProps) => {
             ×
           </button>
         </div>
-        <LoginStateExport renderActions={(actions) => <DialogActions>{actions}</DialogActions>} />
+        <LoginStateExport onClose={closeLoginStateDialog} renderActions={(actions) => <DialogActions>{actions}</DialogActions>} />
       </Dialog>
 
       <IntroDialog open={shouldShowIntro} onClose={dismissIntro} />

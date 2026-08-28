@@ -1,19 +1,31 @@
 import type { ComponentChildren } from "preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
-import type { LoginStateExportResponse, LoginStateTab, LoginStateTabsResponse } from "@/login-state/types"
+import Dialog from "@components/Dialog"
+import type { LoginStateExportResponse, LoginStateTab, LoginStateTabsResponse, PlaywrightStorageState } from "@/login-state/types"
 
 type LoginStateExportProps = {
+  onClose?: () => void
   renderActions?: (actions: ComponentChildren) => ComponentChildren
 }
 
-function LoginStateExport({ renderActions }: LoginStateExportProps) {
+type ExportPreview = {
+  filename: string
+  content: string
+}
+
+function LoginStateExport({ onClose, renderActions }: LoginStateExportProps) {
   const [tabs, setTabs] = useState<LoginStateTab[]>([])
   const [selectedTabId, setSelectedTabId] = useState<number | undefined>()
+  const [includeCookies, setIncludeCookies] = useState(true)
+  const [includeLocalStorage, setIncludeLocalStorage] = useState(true)
   const [includeIndexedDB, setIncludeIndexedDB] = useState(false)
+  const [compactJson, setCompactJson] = useState(false)
+  const [excludedKeys, setExcludedKeys] = useState("")
   const [isLoadingTabs, setIsLoadingTabs] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState("")
   const [warnings, setWarnings] = useState<string[]>([])
+  const [preview, setPreview] = useState<ExportPreview | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -41,9 +53,10 @@ function LoginStateExport({ renderActions }: LoginStateExportProps) {
   }, [])
 
   const selectedTab = useMemo(() => tabs.find((tab) => tab.id === selectedTabId), [selectedTabId, tabs])
-  const canExport = typeof selectedTabId === "number" && !isExporting && !isLoadingTabs
+  const hasSelectedFields = includeCookies || includeLocalStorage || includeIndexedDB
+  const canExport = typeof selectedTabId === "number" && hasSelectedFields && !isExporting && !isLoadingTabs
 
-  const exportState = async () => {
+  const createExportPayload = async () => {
     if (typeof selectedTabId !== "number") return
     setError("")
     setWarnings([])
@@ -61,8 +74,9 @@ function LoginStateExport({ renderActions }: LoginStateExportProps) {
         return
       }
 
-      downloadJson(response.filename, JSON.stringify(response.state, null, 2))
+      const state = filterStorageState(response.state, parseExcludedKeys(excludedKeys), { includeCookies, includeLocalStorage, includeIndexedDB })
       setWarnings(response.warnings ?? [])
+      return { filename: response.filename, content: JSON.stringify(state, null, compactJson ? 0 : 2) }
     } catch (reason) {
       setError(getErrorMessage(reason))
     } finally {
@@ -70,14 +84,41 @@ function LoginStateExport({ renderActions }: LoginStateExportProps) {
     }
   }
 
+  const exportState = async () => {
+    const payload = await createExportPayload()
+    if (payload) downloadJson(payload.filename, payload.content)
+  }
+
+  const previewState = async () => {
+    const payload = await createExportPayload()
+    if (payload) setPreview(payload)
+  }
+
   const actions = (
-    <button
-      className="w-full rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:cursor-not-allowed disabled:opacity-50"
-      type="button"
-      disabled={!canExport}
-      onClick={() => void exportState()}>
-      {isExporting ? "导出中" : "导出所选标签登录态"}
-    </button>
+    <div className="flex gap-2">
+      {onClose && (
+        <button
+          className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100"
+          type="button"
+          onClick={onClose}>
+          关闭
+        </button>
+      )}
+      <button
+        className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+        type="button"
+        disabled={!canExport}
+        onClick={() => void previewState()}>
+        {isExporting ? "处理中" : "预览导出"}
+      </button>
+      <button
+        className="flex-1 rounded-xl bg-[#101828] px-3 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:cursor-not-allowed disabled:opacity-50"
+        type="button"
+        disabled={!canExport}
+        onClick={() => void exportState()}>
+        {isExporting ? "导出中" : "导出登录态"}
+      </button>
+    </div>
   )
 
   return (
@@ -103,7 +144,29 @@ function LoginStateExport({ renderActions }: LoginStateExportProps) {
       {selectedTab && <p className="mt-1 truncate text-xs text-slate-500">{selectedTab.url}</p>}
       {!isLoadingTabs && tabs.length === 0 && <p className="mt-2 text-xs leading-4 text-amber-700">没有可导出的 http/https 标签。</p>}
 
-      <label className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-4 text-slate-600">
+      <label className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-4 text-slate-600">
+        <input
+          className="size-4 accent-[#101828]"
+          type="checkbox"
+          checked={includeCookies}
+          disabled={isExporting}
+          onChange={(event) => setIncludeCookies((event.target as HTMLInputElement).checked)}
+        />
+        <span className="font-medium text-slate-900">包含 Cookie</span>
+      </label>
+
+      <label className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-4 text-slate-600">
+        <input
+          className="size-4 accent-[#101828]"
+          type="checkbox"
+          checked={includeLocalStorage}
+          disabled={isExporting}
+          onChange={(event) => setIncludeLocalStorage((event.target as HTMLInputElement).checked)}
+        />
+        <span className="font-medium text-slate-900">包含 localStorage</span>
+      </label>
+
+      <label className="mt-2 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-4 text-slate-600">
         <input
           className="mt-0.5 size-4 accent-[#101828]"
           type="checkbox"
@@ -117,10 +180,64 @@ function LoginStateExport({ renderActions }: LoginStateExportProps) {
         </span>
       </label>
 
+      {!hasSelectedFields && <p className="mt-2 text-xs leading-4 text-amber-700">至少选择一个导出字段。</p>}
+
+      <label className="mt-3 block text-xs font-medium text-slate-600">
+        排除 key
+        <textarea
+          className="mt-1 min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-[#0077ff] disabled:bg-slate-50 disabled:text-slate-400"
+          value={excludedKeys}
+          disabled={isExporting}
+          placeholder="token, debugFlag, firebase:authUser"
+          onInput={(event) => setExcludedKeys((event.target as HTMLTextAreaElement).value)}
+        />
+        <span className="mt-1 block text-slate-500">用逗号、空格或换行分隔；匹配 Cookie/localStorage 名称和 IndexedDB key。</span>
+      </label>
+
+      <label className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-4 text-slate-600">
+        <input
+          className="size-4 accent-[#101828]"
+          type="checkbox"
+          checked={compactJson}
+          disabled={isExporting}
+          onChange={(event) => setCompactJson((event.target as HTMLInputElement).checked)}
+        />
+        <span className="font-medium text-slate-900">紧凑 JSON</span>
+      </label>
+
       {error && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-4 text-red-700">{error}</p>}
       {warnings.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-4 text-amber-800">{warnings.join("；")}</p>}
 
       {renderActions ? renderActions(actions) : <div className="mt-6">{actions}</div>}
+
+      <Dialog
+        open={preview !== null}
+        titleId="login-state-preview-title"
+        onClose={() => setPreview(null)}
+        panelClassName="max-w-[720px]">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h3 id="login-state-preview-title" className="text-sm font-semibold text-slate-950">导出预览</h3>
+          {preview && <p className="mt-1 truncate text-xs text-slate-500">{preview.filename}</p>}
+        </div>
+        <pre className="max-h-[62vh] overflow-auto bg-slate-950 p-4 text-xs leading-5 text-slate-100">{preview?.content}</pre>
+        <div className="flex gap-2 border-t border-slate-200 p-4">
+          <button
+            className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100"
+            type="button"
+            onClick={() => setPreview(null)}>
+            关闭
+          </button>
+          <button
+            className="flex-1 rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            disabled={!preview}
+            onClick={() => {
+              if (preview) downloadJson(preview.filename, preview.content)
+            }}>
+            导出
+          </button>
+        </div>
+      </Dialog>
     </section>
   )
 }
@@ -151,6 +268,51 @@ function downloadJson(filename: string, content: string) {
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
+}
+
+function filterStorageState(
+  state: PlaywrightStorageState,
+  excludedKeys: Set<string>,
+  options: { includeCookies: boolean; includeLocalStorage: boolean; includeIndexedDB: boolean }
+): PlaywrightStorageState {
+  const shouldExclude = (key: string) => excludedKeys.has(key)
+
+  return {
+    cookies: options.includeCookies ? state.cookies.filter((cookie) => !shouldExclude(cookie.name)) : [],
+    origins: state.origins.map((origin) => ({
+      ...origin,
+      localStorage: options.includeLocalStorage ? origin.localStorage.filter((item) => !shouldExclude(item.name)) : [],
+      ...(options.includeIndexedDB && origin.indexedDB
+        ? {
+            indexedDB: origin.indexedDB.map((database) => ({
+              ...database,
+              stores: database.stores.map((store) => ({
+                ...store,
+                records: store.records.filter((record) => !shouldExclude(getIndexedDBRecordKey(record.value, record.key, store.keyPath)))
+              }))
+            }))
+          }
+        : {})
+    }))
+  }
+}
+
+function parseExcludedKeys(value: string) {
+  return new Set(value.split(/[\s,]+/).filter(Boolean))
+}
+
+function getIndexedDBRecordKey(value: unknown, key: unknown, keyPath?: string | string[]) {
+  if (typeof key === "string" || typeof key === "number") return String(key)
+  if (typeof keyPath === "string") return getValueByPath(value, keyPath)
+  if (Array.isArray(keyPath)) return keyPath.map((path) => getValueByPath(value, path)).join(",")
+  return ""
+}
+
+function getValueByPath(value: unknown, path: string) {
+  const result = path.split(".").reduce<unknown>((current, part) => {
+    return current && typeof current === "object" ? (current as Record<string, unknown>)[part] : undefined
+  }, value)
+  return typeof result === "string" || typeof result === "number" ? String(result) : ""
 }
 
 function getErrorMessage(error: unknown) {
