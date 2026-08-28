@@ -4,6 +4,7 @@ import type { ComponentChildren } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import logoIcon from "@assets/mdlogo.png"
 import Dialog from "@components/Dialog"
+import CookieEditor from "@components/settings/CookieEditor"
 import LoginStateExport from "@components/settings/LoginStateExport"
 import { optionsAtom } from "@/store/options"
 import type { UserAgentType } from "@/types"
@@ -293,6 +294,8 @@ const Home = ({ layout }: HomeProps) => {
                 <span className="text-2xl leading-none text-[#005bd1]">›</span>
               </button>
             )}
+
+            {!isOptions && <CookieEditor />}
           </div>
         </div>
 
