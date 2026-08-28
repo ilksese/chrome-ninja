@@ -4,11 +4,13 @@ import { DEFAULT_OPTIONS, mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
 import { applyUserAgentRule } from "@/user-agent"
 import { registerBossAntiDetectionBackground } from "@/user-agent/boss-navigation"
+import { registerLoginStateExportBackground } from "@/login-state/background"
 import { registerRecorderBackground } from "@/recorder/background"
 
 ninjaLog("background runing")
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
+registerLoginStateExportBackground()
 connectHmrBackground()
 
 type StorageCache = {
@@ -53,10 +55,10 @@ async function getStoredOptions() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function handleMessages(message: any) {
+function handleMessages(message: any) {
   // Return early if this message isn't meant for the background script
   if (message.target !== "background") {
-    return
+    return false
   }
 
   // Dispatch the message to an appropriate handler.
@@ -72,5 +74,8 @@ async function handleMessages(message: any) {
       break
     default:
       console.warn(`Unexpected message type received: '${message.type}'.`)
+      return false
   }
+
+  return false
 }

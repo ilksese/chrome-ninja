@@ -6,6 +6,7 @@ import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 import * as v from "valibot"
+import LoginStateExport from "@components/settings/LoginStateExport"
 import { optionsAtom, DEFAULT_OPTIONS } from "@/store/options"
 import type { Options } from "@/types"
 
@@ -91,6 +92,7 @@ export default function Settings({ layout }: SettingsProps) {
             }}>
             重置默认
           </button>
+          {isOptions && <LoginStateExport />}
         </aside>
       </form>
     </FormProvider>
