@@ -8,7 +8,7 @@ import CookieEditor from "@components/settings/CookieEditor"
 import LoginStateExport from "@components/settings/LoginStateExport"
 import QrPanel from "@/qr/panel"
 import { optionsAtom } from "@/store/options"
-import type { UserAgentType } from "@/types"
+import type { TranslateOptionsType, UserAgentType } from "@/types"
 import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
 
 type HomeProps = {
@@ -136,6 +136,15 @@ const Home = ({ layout }: HomeProps) => {
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
   const [isLoginStateOpen, setIsLoginStateOpen] = useState(false)
   const [isQrOpen, setIsQrOpen] = useState(false)
+  const [isTranslateOpen, setIsTranslateOpen] = useState(false)
+  const [isTranslateSaving, setIsTranslateSaving] = useState(false)
+  const [draftTranslate, setDraftTranslate] = useState<TranslateOptionsType>(options.translate)
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle")
+  const [testError, setTestError] = useState("")
+  const [modelOptions, setModelOptions] = useState<string[]>([])
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
+  const [modelHighlight, setModelHighlight] = useState(-1)
+  const [modelFilter, setModelFilter] = useState("")
   const [qrInitialText, setQrInitialText] = useState("")
   const [hasSeenIntro, setHasSeenIntro] = useState<boolean | null>(null)
   const [selectedUserAgent, setSelectedUserAgent] = useState<UserAgentType>(options.userAgent)
@@ -146,11 +155,17 @@ const Home = ({ layout }: HomeProps) => {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const loginStateTriggerRef = useRef<HTMLButtonElement>(null)
   const qrTriggerRef = useRef<HTMLButtonElement>(null)
+  const translateTriggerRef = useRef<HTMLButtonElement>(null)
+  const translateFirstFieldRef = useRef<HTMLInputElement>(null)
+  const modelInputRef = useRef<HTMLInputElement>(null)
+  const modelListRef = useRef<HTMLUListElement>(null)
   const firstRadioRef = useRef<HTMLInputElement>(null)
   const activeUserAgent = getUserAgentOption(options.userAgent)
   const selectedUserAgentOption = getUserAgentOption(selectedUserAgent)
   const isOptions = layout === "options"
   const shouldShowIntro = hasSeenIntro === false
+  const fieldBorder =
+    testStatus === "ok" ? "border-green-500" : testStatus === "fail" ? "border-red-500" : "border-slate-200 focus:border-[#0077ff]"
 
   useEffect(() => {
     chrome.storage?.local.get([HOME_INTRO_STORAGE_KEY], (result) => {
@@ -194,6 +209,129 @@ const Home = ({ layout }: HomeProps) => {
   const closeQrDialog = () => {
     setIsQrOpen(false)
     requestAnimationFrame(() => qrTriggerRef.current?.focus())
+  }
+
+  const openTranslateDialog = () => {
+    setDraftTranslate(options.translate)
+    setTestStatus("idle")
+    setTestError("")
+    setModelOptions([])
+    setModelDropdownOpen(false)
+    setModelHighlight(-1)
+    setModelFilter("")
+    setError("")
+    setIsTranslateOpen(true)
+  }
+
+  const closeTranslateDialog = () => {
+    setIsTranslateOpen(false)
+    requestAnimationFrame(() => translateTriggerRef.current?.focus())
+  }
+
+  const updateTranslateDraft = (patch: Partial<TranslateOptionsType>, invalidateTest = false) => {
+    setDraftTranslate((draft) => ({ ...draft, ...patch }))
+    if (invalidateTest) {
+      setTestStatus("idle")
+      setTestError("")
+      setModelOptions([])
+    }
+  }
+
+  const filteredModelOptions = modelOptions.filter((model) =>
+    model.toLowerCase().includes(modelFilter.toLowerCase())
+  )
+
+  const openModelDropdown = () => {
+    setModelFilter("")
+    setModelHighlight(modelOptions.findIndex((model) => model === draftTranslate.model))
+    setModelDropdownOpen(true)
+  }
+
+  const selectModelOption = (model: string) => {
+    updateTranslateDraft({ model })
+    setModelDropdownOpen(false)
+    setModelHighlight(-1)
+  }
+
+  const handleModelKeydown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      if (modelDropdownOpen) {
+        event.stopPropagation()
+        setModelDropdownOpen(false)
+      }
+      return
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault()
+      if (!modelDropdownOpen) {
+        openModelDropdown()
+        return
+      }
+      const count = filteredModelOptions.length
+      if (count === 0) {
+        setModelHighlight(-1)
+        return
+      }
+      const delta = event.key === "ArrowDown" ? 1 : -1
+      setModelHighlight((highlight) => Math.min(Math.max(highlight + delta, 0), count - 1))
+      return
+    }
+    if (event.key === "Enter" && modelDropdownOpen && modelHighlight >= 0) {
+      const model = filteredModelOptions[modelHighlight]
+      if (model) {
+        event.preventDefault()
+        selectModelOption(model)
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return
+    const list = modelListRef.current
+    if (!list) return
+    const width = modelInputRef.current?.offsetWidth
+    if (width) list.style.width = `${width}px`
+  }, [modelDropdownOpen])
+
+  const testConnection = async () => {
+    setTestStatus("testing")
+    setTestError("")
+    let response: { ok: boolean; models?: string[]; error?: string } | undefined
+    try {
+      response = (await chrome.runtime.sendMessage({
+        target: "translate",
+        type: "GET_MODELS",
+        baseUrl: draftTranslate.baseUrl,
+        apiKey: draftTranslate.apiKey
+      })) as { ok: boolean; models?: string[]; error?: string } | undefined
+    } catch {
+      response = undefined
+    }
+    if (!response) {
+      setTestStatus("fail")
+      setTestError("扩展上下文已失效，请刷新页面")
+      return
+    }
+    if (response.ok) {
+      setModelOptions(response.models ?? [])
+      setTestStatus("ok")
+    } else {
+      setTestStatus("fail")
+      setTestError(response.error ?? "连接失败")
+    }
+  }
+
+  const confirmTranslate = async () => {
+    setIsTranslateSaving(true)
+    setError("")
+    try {
+      await setOptions({ ...options, translate: draftTranslate })
+      closeTranslateDialog()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI 翻译配置保存失败")
+    } finally {
+      setIsTranslateSaving(false)
+    }
   }
 
   const confirmUserAgent = async () => {
@@ -310,6 +448,19 @@ const Home = ({ layout }: HomeProps) => {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-slate-950">生成二维码</span>
                 <span className="mt-0.5 block truncate text-xs text-slate-500">输入文本或当前页面地址</span>
+              </span>
+              <span className="text-2xl leading-none text-[#005bd1]">›</span>
+            </button>
+
+            <button
+              ref={translateTriggerRef}
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
+              type="button"
+              onClick={openTranslateDialog}>
+              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">译</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">AI 划词翻译</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">{options.translate.enabled ? "已启用" : options.translate.apiKey ? "已配置接口，未开启" : "未配置接口"}</span>
               </span>
               <span className="text-2xl leading-none text-[#005bd1]">›</span>
             </button>
@@ -444,6 +595,152 @@ const Home = ({ layout }: HomeProps) => {
           </button>
         </div>
         <QrPanel initialText={qrInitialText} />
+      </Dialog>
+
+      <Dialog
+        open={isTranslateOpen}
+        titleId="translate-title"
+        onClose={closeTranslateDialog}
+        initialFocusRef={translateFirstFieldRef}
+        className="absolute z-10 bg-slate-950/48"
+        panelClassName="max-w-[335px] rounded-[14px] shadow-[0_24px_70px_rgba(15,23,42,0.28)]"
+        actions={(
+          <div className="flex gap-3 p-4 pt-0">
+            <button
+              className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+              type="button"
+              disabled={isTranslateSaving}
+              onClick={closeTranslateDialog}>
+              取消
+            </button>
+            <button
+              className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+              type="button"
+              disabled={isTranslateSaving || testStatus === "testing"}
+              onClick={() => void testConnection()}>
+              {testStatus === "testing" ? "测试中" : "测试连接"}
+            </button>
+            <button
+              className="flex-1 rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:opacity-60"
+              type="button"
+              disabled={isTranslateSaving}
+              onClick={confirmTranslate}>
+              {isTranslateSaving ? "保存中" : "保存"}
+            </button>
+          </div>
+        )}>
+        <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#101828,#123b66_62%,#0c5fb8)] px-4 py-3 text-white">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/62">ai translate</span>
+          <h2 id="translate-title" className="mt-1 text-base font-semibold leading-5">
+            AI 划词翻译
+          </h2>
+          <p className="mt-1 text-xs leading-4 text-white/72">任意页面（含 iframe）划词后点击气泡，调用 OpenAI 兼容接口翻译。</p>
+        </div>
+
+        <div className="space-y-3 p-4">
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 transition-colors hover:bg-slate-50">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-slate-900">启用划词翻译</span>
+              <span className="mt-0.5 block text-xs leading-4 text-slate-500">选中 ≥2 个字符后显示翻译气泡</span>
+            </span>
+            <input
+              className="size-4 accent-[#0c5fb8]"
+              type="checkbox"
+              checked={draftTranslate.enabled}
+              onChange={(event) => updateTranslateDraft({ enabled: (event.target as HTMLInputElement).checked })}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-600">Base URL</span>
+            <input
+              ref={translateFirstFieldRef}
+              className={cn("mt-1 h-9 w-full rounded-xl bg-white px-3 text-sm text-slate-900 outline-none transition-colors", fieldBorder)}
+              type="url"
+              value={draftTranslate.baseUrl}
+              placeholder="https://api.openai.com/v1"
+              onChange={(event) => updateTranslateDraft({ baseUrl: (event.target as HTMLInputElement).value }, true)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-600">API Key</span>
+            <input
+              className={cn("mt-1 h-9 w-full rounded-xl bg-white px-3 text-sm text-slate-900 outline-none transition-colors", fieldBorder)}
+              type="password"
+              value={draftTranslate.apiKey}
+              placeholder="sk-…"
+              autoComplete="off"
+              onChange={(event) => updateTranslateDraft({ apiKey: (event.target as HTMLInputElement).value }, true)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-600">模型</span>
+            <input
+              ref={modelInputRef}
+              className={cn("translate-model-anchor mt-1 h-9 w-full rounded-xl bg-white px-3 text-sm text-slate-900 outline-none transition-colors", fieldBorder)}
+              type="text"
+              role="combobox"
+              aria-expanded={modelDropdownOpen}
+              aria-controls="translate-model-list"
+              aria-autocomplete="list"
+              value={draftTranslate.model}
+              placeholder="gpt-4o-mini（测试连接后可从列表选择）"
+              onChange={(event) => {
+                const value = (event.target as HTMLInputElement).value
+                updateTranslateDraft({ model: value })
+                setModelFilter(value)
+                setModelHighlight(-1)
+              }}
+              onFocus={openModelDropdown}
+               onBlurCapture={() => setTimeout(() => setModelDropdownOpen(false), 80)}
+              onKeyDown={handleModelKeydown}>
+            </input>
+            {modelDropdownOpen && (
+              <ul
+                id="translate-model-list"
+                ref={modelListRef}
+                role="listbox"
+                aria-label="模型列表"
+                className="translate-model-list">
+                {modelOptions.length === 0 ? (
+                  <li className="cursor-default px-3 py-2 text-xs text-slate-400">先测试连接获取模型列表</li>
+                ) : filteredModelOptions.length === 0 ? (
+                  <li className="cursor-default px-3 py-2 text-xs text-slate-400">无匹配模型</li>
+                ) : (
+                  filteredModelOptions.map((model, index) => (
+                    <li
+                      key={model}
+                      ref={index === modelHighlight ? (element) => element?.scrollIntoView({ block: "nearest" }) : undefined}
+                      role="option"
+                      aria-selected={index === modelHighlight}
+                      className={cn(
+                        "h-9 cursor-pointer truncate px-3 text-sm leading-9",
+                        index === modelHighlight ? "bg-[#e8f2ff] text-[#0c5fb8]" : "text-slate-800"
+                      )}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setModelHighlight(index)}
+                      onClick={(e) => { e.stopPropagation(); selectModelOption(model); }}>
+                      {model}
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-600">目标语言</span>
+            <input
+              className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-[#0077ff]"
+              type="text"
+              value={draftTranslate.targetLang}
+              placeholder="中文"
+              onChange={(event) => updateTranslateDraft({ targetLang: (event.target as HTMLInputElement).value })}
+            />
+          </label>
+        </div>
+
+        {testStatus === "ok" && <p className="px-4 pb-1 text-xs text-green-600">连接成功，已获取 {modelOptions.length} 个模型</p>}
+        {testStatus === "fail" && testError && <p className="px-4 pb-1 text-xs text-red-600">{testError}</p>}
+        {error && <p className="px-4 pb-1 text-xs text-red-600">{error}</p>}
       </Dialog>
 
       <IntroDialog open={shouldShowIntro} onClose={dismissIntro} />

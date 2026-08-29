@@ -16,6 +16,14 @@ export type RecorderOptionsType = {
   enabled: boolean
 }
 
+export type TranslateOptionsType = {
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+  model: string
+  targetLang: string
+}
+
 export type UserAgentType = "default" | "chrome-desktop" | "chrome-android" | "safira-desktop" | "safira-ios"
 
 export type Options = {
@@ -23,5 +31,6 @@ export type Options = {
   baidu: BaiduSettingType
   boss: BossSettingType
   recorder: RecorderOptionsType
+  translate: TranslateOptionsType
   userAgent: UserAgentType
 }

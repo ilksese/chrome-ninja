@@ -16,6 +16,13 @@ export const DEFAULT_OPTIONS: Options = {
   },
   recorder: {
     enabled: false
+  },
+  translate: {
+    enabled: false,
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "",
+    model: "gpt-4o-mini",
+    targetLang: "中文"
   }
 }
 
@@ -38,6 +45,10 @@ export function mergeOptions(options?: Partial<Options>): Options {
     recorder: {
       ...DEFAULT_OPTIONS.recorder,
       ...options?.recorder
+    },
+    translate: {
+      ...DEFAULT_OPTIONS.translate,
+      ...options?.translate
     }
   }
 }

@@ -77,6 +77,12 @@ export default {
     },
     {
       all_frames: true,
+      js: ["src/content-script/translate/index.ts"],
+      matches: ["*://*/*"],
+      run_at: "document_end"
+    },
+    {
+      all_frames: true,
       js: ["src/recorder/content.ts"],
       match_about_blank: true,
       match_origin_as_fallback: true,
@@ -91,7 +97,7 @@ export default {
     page: "src/options/index.html"
   },
   content_security_policy: {
-    extension_pages: "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* https://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*"
+    extension_pages: "script-src 'self'; object-src 'self'; connect-src 'self' http: https: ws: wss:"
   },
   offline_enabled: true,
   host_permissions: ["<all_urls>"],
