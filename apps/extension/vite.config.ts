@@ -23,7 +23,12 @@ export default defineConfig({
   ],
   build: {
     emptyOutDir: !isHmrDevBuild,
-    modulePreload: false
+    modulePreload: false,
+    rollupOptions: {
+      input: {
+        qr: fileURLToPath(new URL("./src/qr/index.html", import.meta.url))
+      }
+    }
   },
   resolve: {
     alias: {

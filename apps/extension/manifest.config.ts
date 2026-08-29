@@ -95,7 +95,7 @@ export default {
   },
   offline_enabled: true,
   host_permissions: ["<all_urls>"],
-  permissions: ["storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies"],
+  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies"],
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],
