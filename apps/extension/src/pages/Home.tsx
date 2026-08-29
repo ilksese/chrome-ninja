@@ -6,6 +6,7 @@ import logoIcon from "@assets/mdlogo.png"
 import Dialog from "@components/Dialog"
 import CookieEditor from "@components/settings/CookieEditor"
 import LoginStateExport from "@components/settings/LoginStateExport"
+import QrPanel from "@/qr/panel"
 import { optionsAtom } from "@/store/options"
 import type { UserAgentType } from "@/types"
 import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
@@ -134,6 +135,8 @@ const Home = ({ layout }: HomeProps) => {
   const [options, setOptions] = useAtom(optionsAtom)
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
   const [isLoginStateOpen, setIsLoginStateOpen] = useState(false)
+  const [isQrOpen, setIsQrOpen] = useState(false)
+  const [qrInitialText, setQrInitialText] = useState("")
   const [hasSeenIntro, setHasSeenIntro] = useState<boolean | null>(null)
   const [selectedUserAgent, setSelectedUserAgent] = useState<UserAgentType>(options.userAgent)
   const [isApplying, setIsApplying] = useState(false)
@@ -142,6 +145,7 @@ const Home = ({ layout }: HomeProps) => {
   const [error, setError] = useState("")
   const triggerRef = useRef<HTMLButtonElement>(null)
   const loginStateTriggerRef = useRef<HTMLButtonElement>(null)
+  const qrTriggerRef = useRef<HTMLButtonElement>(null)
   const firstRadioRef = useRef<HTMLInputElement>(null)
   const activeUserAgent = getUserAgentOption(options.userAgent)
   const selectedUserAgentOption = getUserAgentOption(selectedUserAgent)
@@ -173,6 +177,23 @@ const Home = ({ layout }: HomeProps) => {
   const closeLoginStateDialog = () => {
     setIsLoginStateOpen(false)
     requestAnimationFrame(() => loginStateTriggerRef.current?.focus())
+  }
+
+  const openQrDialog = async () => {
+    let url = ""
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      url = tab?.url ?? ""
+    } catch {
+      url = ""
+    }
+    setQrInitialText(url)
+    setIsQrOpen(true)
+  }
+
+  const closeQrDialog = () => {
+    setIsQrOpen(false)
+    requestAnimationFrame(() => qrTriggerRef.current?.focus())
   }
 
   const confirmUserAgent = async () => {
@@ -278,6 +299,19 @@ const Home = ({ layout }: HomeProps) => {
               <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.recorder.enabled ? "bg-[#b42318]" : "bg-slate-300")} aria-hidden="true">
                 <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.recorder.enabled ? "translate-x-5" : "translate-x-0.5")} />
               </span>
+            </button>
+
+            <button
+              ref={qrTriggerRef}
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
+              type="button"
+              onClick={() => void openQrDialog()}>
+              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">QR</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">生成二维码</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">输入文本或当前页面地址</span>
+              </span>
+              <span className="text-2xl leading-none text-[#005bd1]">›</span>
             </button>
 
             {!isOptions && (
@@ -388,6 +422,28 @@ const Home = ({ layout }: HomeProps) => {
           </button>
         </div>
         <LoginStateExport onClose={closeLoginStateDialog} renderActions={(actions) => <DialogActions>{actions}</DialogActions>} />
+      </Dialog>
+
+      <Dialog
+        open={isQrOpen}
+        titleId="qr-title"
+        onClose={closeQrDialog}
+        className="absolute z-10 bg-slate-950/48"
+        panelClassName="max-w-[335px] rounded-[14px] shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <div className="flex items-start justify-between gap-3 p-4 pb-0">
+          <span className="min-w-0">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#005bd1]">qr code</span>
+            <h2 id="qr-title" className="mt-1 text-base font-semibold leading-5 text-slate-950">生成二维码</h2>
+          </span>
+          <button
+            className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-lg leading-none text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            type="button"
+            aria-label="关闭生成二维码"
+            onClick={closeQrDialog}>
+            ×
+          </button>
+        </div>
+        <QrPanel initialText={qrInitialText} />
       </Dialog>
 
       <IntroDialog open={shouldShowIntro} onClose={dismissIntro} />

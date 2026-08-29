@@ -5,12 +5,14 @@ import type { Options } from "@/types"
 import { applyUserAgentRule } from "@/user-agent"
 import { registerBossAntiDetectionBackground } from "@/user-agent/boss-navigation"
 import { registerLoginStateExportBackground } from "@/login-state/background"
+import { registerQrBackground } from "@/qr/background"
 import { registerRecorderBackground } from "@/recorder/background"
 
 ninjaLog("background runing")
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
 registerLoginStateExportBackground()
+registerQrBackground()
 connectHmrBackground()
 
 type StorageCache = {
