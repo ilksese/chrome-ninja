@@ -1,6 +1,6 @@
 import type { ComponentChildren, RefObject } from "preact"
 import { createPortal } from "preact/compat"
-import { useEffect } from "preact/hooks"
+import { useEffect, useRef } from "preact/hooks"
 import { cn } from "@chrome-ninja/utils"
 
 type DialogProps = {
@@ -15,17 +15,23 @@ type DialogProps = {
 }
 
 function Dialog({ open, titleId, onClose, children, actions, className, panelClassName, initialFocusRef }: DialogProps) {
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
   useEffect(() => {
     if (!open) return
 
     requestAnimationFrame(() => initialFocusRef?.current?.focus())
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
+      if (event.key === "Escape") onCloseRef.current()
     }
 
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
-  }, [initialFocusRef, onClose, open])
+  }, [initialFocusRef, open])
 
   if (!open) return null
 

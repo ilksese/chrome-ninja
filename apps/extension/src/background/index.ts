@@ -1,35 +1,32 @@
 import { ninjaLog } from "@chrome-ninja/utils"
 import { connectHmrBackground } from "@chrome-ninja/hmr/client"
-import { DEFAULT_OPTIONS, mergeOptions } from "@/store/options"
+import { mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
 import { applyUserAgentRule } from "@/user-agent"
 import { registerBossAntiDetectionBackground } from "@/user-agent/boss-navigation"
 import { registerLoginStateExportBackground } from "@/login-state/background"
 import { registerQrBackground } from "@/qr/background"
 import { registerRecorderBackground } from "@/recorder/background"
+import { registerTranslateBackground } from "@/translate/background"
 
 ninjaLog("background runing")
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
 registerLoginStateExportBackground()
 registerQrBackground()
+registerTranslateBackground()
 connectHmrBackground()
-
-type StorageCache = {
-  options: Options
-}
-
-const storageCache: StorageCache = {
-  options: DEFAULT_OPTIONS
-}
 
 chrome.runtime.onInstalled.addListener((details) => {
   switch (details.reason) {
     case chrome.runtime.OnInstalledReason.INSTALL:
     case chrome.runtime.OnInstalledReason.UPDATE: {
-      chrome.storage.local.set(storageCache, () => {
-        ninjaLog("初始化设置成功😄")
-        void syncUserAgentRule(storageCache.options)
+      chrome.storage.local.get(["options"], ({ options }) => {
+        const merged = mergeOptions(options)
+        chrome.storage.local.set({ options: merged }, () => {
+          ninjaLog("初始化设置成功😄")
+          void syncUserAgentRule(merged)
+        })
       })
     }
   }

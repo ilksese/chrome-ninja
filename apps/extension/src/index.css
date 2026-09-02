@@ -137,3 +137,24 @@ input:focus-visible {
     min-width: 0;
   }
 }
+
+.translate-model-anchor {
+  anchor-name: --translate-model-input;
+}
+
+.translate-model-list {
+  position: fixed;
+  position-anchor: --translate-model-input;
+  inset: auto;
+  top: anchor(bottom);
+  left: anchor(left);
+  margin: 4px 0 0;
+  max-height: 128px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  border: 1px solid var(--ninja-border);
+  border-radius: 12px;
+  background: var(--ninja-card);
+  box-shadow: var(--ninja-shadow);
+}

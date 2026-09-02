@@ -25,6 +25,13 @@ const validationSchema = v.object({
   }),
   recorder: v.object({
     enabled: v.boolean()
+  }),
+  translate: v.object({
+    enabled: v.boolean(),
+    baseUrl: v.string(),
+    apiKey: v.string(),
+    model: v.string(),
+    targetLang: v.string()
   })
 })
 

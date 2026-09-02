@@ -26,3 +26,7 @@
 
 - Run `pnpm --filter @chrome-ninja/extension lint` and `pnpm --filter @chrome-ninja/extension typecheck` for source edits.
 - Run `pnpm --filter @chrome-ninja/extension build` when touching manifest, background, content-script, assets, or Vite config.
+
+## Dev Debugging/Popup Debugging
+
+- Open `chrome-extension://<id>/index.html` in a normal browser tab — that page is the extension popup, so it can be debugged like any web page (`<id>` is the extension ID from `chrome://extensions`).

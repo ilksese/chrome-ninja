@@ -17,6 +17,10 @@
 - Web focused checks: `pnpm --filter @chrome-ninja/web lint`, `pnpm --filter @chrome-ninja/web typecheck`, `pnpm --filter @chrome-ninja/web build`.
 - There is no configured test runner in this repo; do not invent `pnpm test` as a verification step.
 
+## Dev Debugging/Popup Debugging
+
+- Open `chrome-extension://<id>/index.html` in a normal browser tab — that page is the extension popup, so it can be debugged like any web page (`<id>` is the extension ID from `chrome://extensions`).
+
 ## Generated And Ignored Output
 
 - Build output is `dist` under the app being built; keep it out of commits.
