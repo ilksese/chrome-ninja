@@ -11,6 +11,16 @@ function HomeIcon() {
   )
 }
 
+function VideoIcon() {
+  return (
+    <svg aria-hidden="true" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="15" height="14" rx="2" />
+      <path d="m18 10 3-2v8l-3-2" />
+      <path d="m9 9 4 3-4 3Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 function SettingsIcon() {
   return (
     <svg aria-hidden="true" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -30,6 +40,7 @@ function NavigationBar({ layout }: NavigationBarProps) {
   const isOptions = layout === "options"
   const items = [
     { label: "首页", value: "/home", icon: <HomeIcon /> },
+    { label: "嗅探", value: "/video-sniffer", icon: <VideoIcon /> },
     { label: "设置", value: "/settings", icon: <SettingsIcon /> }
   ]
   const activeIndex = Math.max(
@@ -38,16 +49,16 @@ function NavigationBar({ layout }: NavigationBarProps) {
   )
 
   return (
-    <nav className={cn("relative", isOptions ? "flex h-full flex-col gap-2 max-[760px]:grid max-[760px]:grid-cols-2" : "bg-white/72 px-2 pb-2 pt-1 backdrop-blur")}>
-      <div className={cn(isOptions ? "contents" : "relative grid grid-cols-2 gap-1.5 overflow-hidden rounded-[14px] bg-slate-100/80 p-1 shadow-[0_-8px_24px_rgba(16,24,40,0.06)]")}>
+    <nav className={cn("relative", isOptions ? "flex h-full flex-col gap-2 max-[760px]:grid max-[760px]:grid-cols-3" : "bg-white/72 px-2 pb-2 pt-1 backdrop-blur")}>
+      <div className={cn(isOptions ? "contents" : "relative grid grid-cols-3 gap-1.5 overflow-hidden rounded-[14px] bg-slate-100/80 p-1 shadow-[0_-8px_24px_rgba(16,24,40,0.06)]")}>
         {!isOptions && (
           <span
-            className="pointer-events-none absolute bottom-1 left-1 top-1 w-[calc(50%-0.4375rem)] rounded-[10px] bg-white shadow-[0_10px_22px_rgba(0,91,209,0.20)] transition-transform duration-300 ease-out"
-            style={{ transform: activeIndex === 1 ? "translateX(calc(100% + 0.375rem))" : "translateX(0)" }}
+            className="pointer-events-none absolute bottom-1 left-1 top-1 w-[calc((100%-0.75rem)/3)] rounded-[10px] bg-white shadow-[0_10px_22px_rgba(0,91,209,0.20)] transition-transform duration-300 ease-out"
+            style={{ transform: "translateX(calc(" + activeIndex * 100 + "% + " + activeIndex * 0.375 + "rem))" }}
           />
         )}
         {isOptions && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm max-[760px]:col-span-2 max-[760px]:mb-1">
+          <div className="mb-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm max-[760px]:col-span-3 max-[760px]:mb-1">
             <img className="size-9" src={logoIcon} alt="chrome ninja" />
             <span className="min-w-0">
               <span className="block text-sm font-semibold leading-5 text-slate-950">Chrome Ninja</span>

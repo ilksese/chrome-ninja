@@ -7,7 +7,7 @@ type SwitchFieldProps = {
   checked: boolean
   label: string
   description?: string
-  path: "baidu.clearSearch" | `bilibili.${keyof BilibiliOptionsType}` | `boss.${keyof BossSettingType}`
+  path: "baidu.clearSearch" | `bilibili.${keyof BilibiliOptionsType}` | `boss.${keyof BossSettingType}` | "videoSniffer.enabled"
   tone?: "blue" | "slate" | "orange"
 }
 
@@ -31,11 +31,11 @@ function SwitchField({ checked, description, label, path, tone = "blue" }: Switc
       </span>
       <Switch.Root
         checked={checked}
-        className="relative h-6 w-11 rounded-full bg-slate-300 outline-none transition-colors hover:bg-slate-400 data-[checked]:bg-[#101828] data-[checked]:hover:bg-[#1d2939] data-[focus-visible]:ring-2 data-[focus-visible]:ring-[#0077ff] data-[disabled]:opacity-50"
+        className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full bg-slate-300 p-0 outline-none transition-colors hover:bg-slate-400 data-[checked]:bg-[#101828] data-[checked]:hover:bg-[#1d2939] data-[focus-visible]:ring-2 data-[focus-visible]:ring-[#0077ff] data-[disabled]:opacity-50"
         onCheckedChange={(value: boolean) => {
           setValue(path, value, { shouldDirty: true, shouldTouch: true, shouldValidate: true })
         }}>
-        <Switch.Thumb className="block size-5 translate-x-0.5 rounded-full bg-white shadow transition-transform data-[checked]:translate-x-5" />
+        <Switch.Thumb className="block size-5 shrink-0 translate-x-0.5 rounded-full bg-white shadow transition-transform data-[checked]:translate-x-5" />
       </Switch.Root>
     </label>
   )

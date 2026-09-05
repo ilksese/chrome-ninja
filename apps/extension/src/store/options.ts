@@ -17,6 +17,9 @@ export const DEFAULT_OPTIONS: Options = {
   recorder: {
     enabled: false
   },
+  videoSniffer: {
+    enabled: true
+  },
   translate: {
     enabled: false,
     baseUrl: "https://api.openai.com/v1",
@@ -45,6 +48,10 @@ export function mergeOptions(options?: Partial<Options>): Options {
     recorder: {
       ...DEFAULT_OPTIONS.recorder,
       ...options?.recorder
+    },
+    videoSniffer: {
+      ...DEFAULT_OPTIONS.videoSniffer,
+      ...options?.videoSniffer
     },
     translate: {
       ...DEFAULT_OPTIONS.translate,

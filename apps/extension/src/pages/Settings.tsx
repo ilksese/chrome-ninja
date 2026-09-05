@@ -7,6 +7,7 @@ import { FormProvider, useForm } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 import * as v from "valibot"
 import LoginStateExport from "@components/settings/LoginStateExport"
+import VideoSnifferSetting from "@components/settings/VideoSnifferSetting"
 import { optionsAtom, DEFAULT_OPTIONS } from "@/store/options"
 import type { Options } from "@/types"
 
@@ -24,6 +25,9 @@ const validationSchema = v.object({
     enabled: v.boolean()
   }),
   recorder: v.object({
+    enabled: v.boolean()
+  }),
+  videoSniffer: v.object({
     enabled: v.boolean()
   }),
   translate: v.object({
@@ -82,6 +86,7 @@ export default function Settings({ layout }: SettingsProps) {
           <div className={cn("grid gap-3", isOptions && "md:grid-cols-2")}>
             <BilibiliSetting />
             <BaiduSetting />
+            <VideoSnifferSetting />
           </div>
         </section>
         <aside className={cn(isOptions ? "rounded-[14px] border border-slate-200 bg-white p-4 shadow-sm max-[900px]:mt-4" : "mt-4")}>
