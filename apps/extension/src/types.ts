@@ -16,6 +16,10 @@ export type RecorderOptionsType = {
   enabled: boolean
 }
 
+export type VideoSnifferOptionsType = {
+  enabled: boolean
+}
+
 export type TranslateOptionsType = {
   enabled: boolean
   baseUrl: string
@@ -31,6 +35,7 @@ export type Options = {
   baidu: BaiduSettingType
   boss: BossSettingType
   recorder: RecorderOptionsType
+  videoSniffer: VideoSnifferOptionsType
   translate: TranslateOptionsType
   userAgent: UserAgentType
 }

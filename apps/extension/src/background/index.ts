@@ -8,6 +8,7 @@ import { registerLoginStateExportBackground } from "@/login-state/background"
 import { registerQrBackground } from "@/qr/background"
 import { registerRecorderBackground } from "@/recorder/background"
 import { registerTranslateBackground } from "@/translate/background"
+import { registerVideoSnifferBackground } from "@/video-sniffer/background"
 
 ninjaLog("background runing")
 registerBossAntiDetectionBackground()
@@ -15,6 +16,7 @@ registerRecorderBackground()
 registerLoginStateExportBackground()
 registerQrBackground()
 registerTranslateBackground()
+registerVideoSnifferBackground()
 connectHmrBackground()
 
 chrome.runtime.onInstalled.addListener((details) => {

@@ -77,6 +77,14 @@ export default {
     },
     {
       all_frames: true,
+      js: ["src/video-sniffer/content.ts"],
+      match_about_blank: true,
+      match_origin_as_fallback: true,
+      matches: ["<all_urls>"],
+      run_at: "document_idle"
+    },
+    {
+      all_frames: true,
       js: ["src/content-script/translate/index.ts"],
       matches: ["*://*/*"],
       run_at: "document_end"
@@ -101,7 +109,7 @@ export default {
   },
   offline_enabled: true,
   host_permissions: ["<all_urls>"],
-  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies"],
+  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite"],
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],

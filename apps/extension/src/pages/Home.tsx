@@ -2,6 +2,7 @@ import { cn } from "@chrome-ninja/utils"
 import { useAtom } from "jotai"
 import type { ComponentChildren } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
+import { useNavigate } from "react-router-dom"
 import logoIcon from "@assets/mdlogo.png"
 import Dialog from "@components/Dialog"
 import CookieEditor from "@components/settings/CookieEditor"
@@ -133,6 +134,7 @@ function DialogActions({ children }: { children: ComponentChildren }) {
 
 const Home = ({ layout }: HomeProps) => {
   const [options, setOptions] = useAtom(optionsAtom)
+  const navigate = useNavigate()
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
   const [isLoginStateOpen, setIsLoginStateOpen] = useState(false)
   const [isQrOpen, setIsQrOpen] = useState(false)
@@ -437,6 +439,18 @@ const Home = ({ layout }: HomeProps) => {
               <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.recorder.enabled ? "bg-[#b42318]" : "bg-slate-300")} aria-hidden="true">
                 <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.recorder.enabled ? "translate-x-5" : "translate-x-0.5")} />
               </span>
+            </button>
+
+            <button
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
+              type="button"
+              onClick={() => navigate("/video-sniffer")}>
+              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">VID</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">视频嗅探</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">捕获当前页面的视频地址并复制或下载</span>
+              </span>
+              <span className="text-2xl leading-none text-[#005bd1]">›</span>
             </button>
 
             <button
