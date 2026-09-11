@@ -11,6 +11,7 @@ import QrPanel from "@/qr/panel"
 import { optionsAtom } from "@/store/options"
 import type { TranslateOptionsType, UserAgentType } from "@/types"
 import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
+import NetworkMonitorToggle from "@/components/NetworkMonitorToggle"
 
 type HomeProps = {
   layout: "popup" | "options"
@@ -465,6 +466,8 @@ const Home = ({ layout }: HomeProps) => {
               </span>
               <span className="text-2xl leading-none text-[#005bd1]">›</span>
             </button>
+
+            {!isOptions && <NetworkMonitorToggle />}
 
             <button
               ref={translateTriggerRef}
