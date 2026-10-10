@@ -15,6 +15,28 @@ export type NetmonHeader = {
 export type NetmonBody = {
   mode: "json" | "raw"
   text: string
+  truncated?: boolean
+  note?: string
+}
+
+export type NetmonParameter = {
+  name: string
+  value: string
+}
+
+export type NetmonFormEntry = NetmonParameter | { name: string; file: { name: string; type: string; size: number } }
+
+export type NetmonRequestBody =
+  | (NetmonBody & { kind: "text" })
+  | { kind: "urlencoded"; text: string; entries: NetmonParameter[]; truncated: boolean; note?: string }
+  | { kind: "formdata"; entries: NetmonFormEntry[]; truncated: boolean }
+  | { kind: "unavailable"; description: string }
+
+export type NetmonOutcome = "success" | "http-error" | "network-error" | "aborted" | "timeout" | "unknown"
+
+export type NetmonError = {
+  name: string
+  message: string
 }
 
 export type NetmonRecord = {
@@ -28,7 +50,11 @@ export type NetmonRecord = {
   duration: number
   requestHeaders: NetmonHeader[]
   responseHeaders: NetmonHeader[]
+  requestBody: NetmonRequestBody | null
   body: NetmonBody | null
+  bodyNote: string | null
+  outcome: NetmonOutcome
+  error: NetmonError | null
   ts: number
 }
 
@@ -44,10 +70,7 @@ export type NetmonTabState = {
 }
 
 export type NetmonCommand =
-  | { name: "toggle" }
-  | { name: "addRule"; pattern: string }
-  | { name: "removeRule"; id: string }
-  | { name: "stop" }
+  { name: "toggle" } | { name: "addRule"; pattern: string } | { name: "removeRule"; id: string } | { name: "stop" }
 
 export type NetmonHookEventPayload = {
   requestId: string
@@ -58,7 +81,11 @@ export type NetmonHookEventPayload = {
   duration: number
   requestHeaders: NetmonHeader[]
   responseHeaders: NetmonHeader[]
+  requestBody: NetmonRequestBody | null
   body: NetmonBody | null
+  bodyNote: string | null
+  outcome: NetmonOutcome
+  error: NetmonError | null
 }
 
 export type NetmonGetStateMessage = {

@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "preact/hooks"
 import type { JSX } from "preact"
-import type { NetmonCommand, NetmonHeader, NetmonRecord, NetmonTabState } from "./types"
+import type {
+  NetmonBody,
+  NetmonCommand,
+  NetmonFormEntry,
+  NetmonHeader,
+  NetmonRecord,
+  NetmonRequestBody,
+  NetmonTabState
+} from "./types"
 import { RECORD_LIMIT } from "./types"
+import { curlCopyReason, queryParameters, requestCopyReason, toCurl, toFetch } from "./requests"
 
 const PANEL_MARGIN = 16
 
@@ -63,7 +72,16 @@ function toggleButtonStyle(): JSX.CSSProperties {
 
 function Icon({ path, size = 12, strokeWidth = 2.5 }: { path: JSX.Element; size?: number; strokeWidth?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}>
       {path}
     </svg>
   )
@@ -71,14 +89,29 @@ function Icon({ path, size = 12, strokeWidth = 2.5 }: { path: JSX.Element; size?
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <span style={{ display: "inline-flex", transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s ease" }}>
+    <span
+      style={{
+        display: "inline-flex",
+        transform: open ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 0.15s ease"
+      }}>
       <Icon path={<polyline points="9 6 15 12 9 18" />} />
     </span>
   )
 }
 
 function CloseIcon({ size = 12 }: { size?: number }) {
-  return <Icon size={size} path={<><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>} />
+  return (
+    <Icon
+      size={size}
+      path={
+        <>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </>
+      }
+    />
+  )
 }
 
 function HeaderSection({ title, headers }: { title: string; headers: NetmonHeader[] }) {
@@ -86,16 +119,22 @@ function HeaderSection({ title, headers }: { title: string; headers: NetmonHeade
   if (headers.length === 0) return null
   return (
     <div style={{ borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
-      <button style={toggleButtonStyle()} type="button" onClick={() => setOpen((v) => !v)}>
-        <span>{title}</span>
+      <button style={toggleButtonStyle()} type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span>
+          {title} · {headers.length}
+        </span>
         <ChevronIcon open={open} />
       </button>
       {open && (
         <div style={{ maxHeight: 160, overflowY: "auto", borderTop: "1px solid #e2e8f0", padding: "0.5rem 0.75rem" }}>
-          {headers.map((header) => (
-            <div key={`${header.name}:${header.value}`} style={{ marginBottom: 4, display: "flex", gap: 8, fontSize: 12 }}>
-              <span style={{ flexShrink: 0, fontWeight: 500, color: "#64748b" }}>{header.name}</span>
-              <span style={{ wordBreak: "break-all", color: "#334155" }}>{header.value}</span>
+          {headers.map((header, index) => (
+            <div key={index} style={{ marginBottom: 4, display: "flex", gap: 8, fontSize: 12 }}>
+              <span style={{ maxWidth: "45%", minWidth: 0, wordBreak: "break-all", fontWeight: 500, color: "#64748b" }}>
+                {header.name || "（空名称）"}
+              </span>
+              <span style={{ minWidth: 0, flex: 1, wordBreak: "break-all", whiteSpace: "pre-wrap", color: "#334155" }}>
+                {header.value || "（空值）"}
+              </span>
             </div>
           ))}
         </div>
@@ -106,44 +145,82 @@ function HeaderSection({ title, headers }: { title: string; headers: NetmonHeade
 
 function CopyIcon({ copied }: { copied: boolean }) {
   return copied ? (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
     </svg>
   ) : (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round">
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </svg>
   )
 }
 
-function useCopy(): [boolean, (text: string) => void] {
+function useCopy(): [boolean, (text: string) => Promise<boolean>, string] {
   const [copied, setCopied] = useState(false)
+  const [error, setError] = useState("")
   const timerRef = useRef<number>()
   useEffect(() => () => window.clearTimeout(timerRef.current), [])
-  const copy = (text: string) => {
-    if (copied) return
-    void navigator.clipboard.writeText(text).then(() => {
+  const copy = async (text: string) => {
+    setError("")
+    try {
+      if (!navigator.clipboard) throw new Error("剪贴板不可用")
+      await navigator.clipboard.writeText(text)
+      window.clearTimeout(timerRef.current)
       setCopied(true)
       timerRef.current = window.setTimeout(() => setCopied(false), 2000)
-    })
+      return true
+    } catch {
+      setCopied(false)
+      setError("复制失败，请检查页面安全上下文或剪贴板权限后重试")
+      return false
+    }
   }
-  return [copied, copy]
+  return [copied, copy, error]
 }
 
-function BodySection({ record }: { record: NetmonRecord }) {
+function BodySection({ title, body, note }: { title: string; body: NetmonBody | null; note?: string | null }) {
   const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<"json" | "raw">(record.body?.mode ?? "raw")
-  const [copied, copy] = useCopy()
-  if (!record.body) return null
+  const [mode, setMode] = useState<"json" | "raw">(body?.mode ?? "raw")
+  const [copied, copy, error] = useCopy()
+  if (!body && !note) return null
   const json = mode === "json"
   return (
     <div style={{ borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
-      <button style={toggleButtonStyle()} type="button" onClick={() => setOpen((v) => !v)}>
-        <span>响应体</span>
+      <button style={toggleButtonStyle()} type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span>
+          {title}
+          {body?.truncated ? " · 已截断" : !body ? " · 不可用" : ""}
+        </span>
         <ChevronIcon open={open} />
       </button>
-      {open && (
+      {note && (
+        <p style={{ margin: 0, padding: "0 0.75rem 0.5rem", fontSize: 11, wordBreak: "break-word", color: "#92400e" }}>
+          {note}
+        </p>
+      )}
+      {body?.truncated && (
+        <p style={{ margin: 0, padding: "0 0.75rem 0.5rem", fontSize: 11, color: "#92400e" }}>
+          仅展示已采集片段，不是完整正文
+        </p>
+      )}
+      {open && body && (
         <div style={{ borderTop: "1px solid #e2e8f0", padding: "0.5rem 0.75rem" }}>
           <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
             <button
@@ -154,9 +231,11 @@ function BodySection({ record }: { record: NetmonRecord }) {
                 fontSize: 12,
                 fontWeight: 600,
                 background: json ? "#101828" : "transparent",
-                color: json ? "#fff" : "#64748b"
+                color: json ? "#fff" : "#64748b",
+                opacity: body.mode === "json" ? 1 : 0.5
               }}
               type="button"
+              disabled={body.mode !== "json"}
               onClick={() => setMode("json")}>
               JSON
             </button>
@@ -185,16 +264,16 @@ function BodySection({ record }: { record: NetmonRecord }) {
                 borderRadius: 6,
                 border: "1px solid #e2e8f0",
                 background: "#fff",
-                color: copied ? "#047857" : "#64748b",
-                cursor: copied ? "default" : "pointer"
+                color: copied ? "#047857" : "#64748b"
               }}
               type="button"
-              title={copied ? "已复制" : "复制响应体"}
-              disabled={copied}
-              onClick={() => copy(record.body?.text ?? "")}>
+              title={copied ? "已复制" : body.truncated ? `复制${title}片段` : `复制${title}`}
+              aria-label={body.truncated ? `复制${title}片段` : `复制${title}`}
+              onClick={() => void copy(body.text)}>
               <CopyIcon copied={copied} />
             </button>
           </div>
+          {error && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b91c1c" }}>{error}</p>}
           <pre
             style={{
               maxHeight: 256,
@@ -205,9 +284,76 @@ function BodySection({ record }: { record: NetmonRecord }) {
               color: "#334155",
               margin: 0
             }}>
-            {record.body.mode === "json" && json ? formatJson(record.body.text) : record.body.text}
+            {body.text === "" ? "（空正文）" : body.mode === "json" && json ? formatJson(body.text) : body.text}
           </pre>
         </div>
+      )}
+    </div>
+  )
+}
+
+function RequestBodySection({ body }: { body: NetmonRequestBody | null }) {
+  if (!body) return <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>请求体：无</p>
+  if (body.kind === "unavailable") return <BodySection title="请求体" body={null} note={body.description} />
+  if (body.kind === "text") return <BodySection title="请求体" body={body} note={body.note} />
+  const fileCount = body.entries.filter((entry) => "file" in entry).length
+  const fields: NetmonHeader[] = body.entries.map((entry: NetmonFormEntry) => ({
+    name: entry.name,
+    value:
+      "file" in entry
+        ? `文件：${entry.file.name || "未命名"} · ${entry.file.type || "未知类型"} · ${entry.file.size} 字节`
+        : entry.value
+  }))
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <HeaderSection
+        title={body.kind === "urlencoded" ? "请求体 · URL-encoded" : "请求体 · FormData"}
+        headers={fields}
+      />
+      {fields.length === 0 && <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>请求体：空表单</p>}
+      {body.truncated && <p style={{ margin: 0, fontSize: 11, color: "#92400e" }}>表单已截断，仅展示已采集字段</p>}
+      {fileCount > 0 && <p style={{ margin: 0, fontSize: 11, color: "#92400e" }}>文件仅展示元数据，不含上传内容</p>}
+      {body.kind === "urlencoded" && (
+        <BodySection
+          title="请求体原文"
+          body={{ mode: "raw", text: body.text, truncated: body.truncated }}
+          note={body.note}
+        />
+      )}
+    </div>
+  )
+}
+
+function ErrorSection({ record }: { record: NetmonRecord }) {
+  const outcome = record.outcome ?? (record.status >= 400 ? "http-error" : record.status === 0 ? "unknown" : "success")
+  if (outcome === "success") return null
+  const labels = {
+    "http-error": "HTTP 错误",
+    "network-error": "网络失败",
+    aborted: "已取消",
+    timeout: "超时",
+    unknown: "未知／请求失败"
+  }
+  return (
+    <div
+      style={{
+        border: "1px solid #fecaca",
+        borderRadius: 8,
+        background: "#fef2f2",
+        padding: "0.5rem 0.75rem",
+        fontSize: 12,
+        color: "#991b1b",
+        wordBreak: "break-word"
+      }}>
+      <strong>
+        {labels[outcome]}
+        {outcome === "http-error" ? ` · ${record.status}` : ""}
+      </strong>
+      <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>
+        {record.error ? `${record.error.name}: ${record.error.message}` : "未提供错误详情"}
+      </p>
+      {outcome === "unknown" && (
+        <p style={{ margin: "4px 0 0", fontSize: 11 }}>浏览器未提供足够信息，无法确定具体原因。</p>
       )}
     </div>
   )
@@ -238,64 +384,60 @@ function pathOf(url: string): string {
   }
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`
-}
-
-function toCurl(record: NetmonRecord): string {
-  const lines = [`curl ${shellQuote(record.url)}`]
-  if (record.method && record.method !== "GET") lines.push(`  -X ${record.method}`)
-  for (const header of record.requestHeaders) {
-    lines.push(`  -H ${shellQuote(`${header.name}: ${header.value}`)}`)
-  }
-  return lines.join(" \\\n")
-}
-
-function toFetch(record: NetmonRecord): string {
-  const headers = record.requestHeaders.length
-    ? `,\n  headers: {\n${record.requestHeaders.map((h) => `    ${JSON.stringify(h.name)}: ${JSON.stringify(h.value)}`).join(",\n")}\n  }`
-    : ""
-  const init = `${headers ? `{\n  method: ${JSON.stringify(record.method)}${headers}\n}` : ""}`
-  return `fetch(${JSON.stringify(record.url)}${init ? `, ${init}` : ""})`
-}
-
 function ActionBar({ record }: { record: NetmonRecord }) {
-  const [copied, copy] = useCopy()
+  const [copied, copy, error] = useCopy()
   const [last, setLast] = useState("")
-  const run = (label: string, text: string) => {
-    setLast(label)
-    copy(text)
+  const [copying, setCopying] = useState(false)
+  const run = async (label: string, text: string) => {
+    setCopying(true)
+    if (await copy(text)) setLast(label)
+    setCopying(false)
   }
-  const actions: { label: string; text: string }[] = [
+  const reason = requestCopyReason(record)
+  const curlReason = curlCopyReason(record)
+  const actions: { label: string; text: string | null; reason?: string }[] = [
     { label: "Copy Link", text: record.url },
-    { label: "Copy Curl", text: toCurl(record) },
-    { label: "Copy Fetch", text: toFetch(record) }
+    { label: "Copy Curl", text: toCurl(record), reason: curlReason ?? undefined },
+    { label: "Copy Fetch", text: toFetch(record), reason: reason ?? undefined }
   ]
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-      {actions.map((action) => (
-        <button
-          key={action.label}
-          style={{
-            ...plainButton,
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            borderRadius: 6,
-            border: "1px solid #e2e8f0",
-            background: "#fff",
-            padding: "3px 8px",
-            fontSize: 10,
-            fontWeight: 600,
-            color: copied && last === action.label ? "#047857" : "#475569",
-            cursor: copied && last === action.label ? "default" : "pointer"
-          }}
-          type="button"
-          disabled={copied && last === action.label}
-          onClick={() => run(action.label, action.text)}>
-          {action.label}
-        </button>
-      ))}
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            style={{
+              ...plainButton,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              borderRadius: 6,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              padding: "3px 8px",
+              fontSize: 10,
+              fontWeight: 600,
+              color: copied && last === action.label ? "#047857" : "#475569",
+              opacity: action.text === null ? 0.5 : 1,
+              cursor: action.text === null || copying ? "not-allowed" : "pointer"
+            }}
+            type="button"
+            title={action.reason || action.label}
+            disabled={action.text === null || copying}
+            onClick={() => action.text !== null && void run(action.label, action.text)}>
+            {copied && last === action.label ? `${action.label} · 已复制` : action.label}
+          </button>
+        ))}
+      </div>
+      <p style={{ margin: "4px 0 0", fontSize: 10, color: reason ? "#92400e" : "#94a3b8", wordBreak: "break-word" }}>
+        {reason || "复制仅包含可获取的请求信息，不含浏览器自动添加的全部请求头／Cookie。"}
+      </p>
+      {!reason && curlReason && <p style={{ margin: "4px 0 0", fontSize: 10, color: "#92400e" }}>{curlReason}</p>}
+      {error && (
+        <p role="status" style={{ margin: "4px 0 0", fontSize: 11, color: "#b91c1c" }}>
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -378,7 +520,14 @@ function sortGroups(groups: FrameGroupData[], dir: SortDir): FrameGroupData[] {
 function ArrowIcon({ down }: { down: boolean }) {
   return (
     <span style={{ display: "inline-flex", transform: down ? "rotate(0deg)" : "rotate(180deg)" }}>
-      <Icon path={<><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>} />
+      <Icon
+        path={
+          <>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          </>
+        }
+      />
     </span>
   )
 }
@@ -437,10 +586,27 @@ function FrameGroup({ frameUrl, records }: FrameGroupData) {
           }}
           type="button"
           onClick={() => setOpen((v) => !v)}>
-          <span style={{ flexShrink: 0, borderRadius: 4, background: isTop ? "#eef2ff" : "#fef3c7", padding: "1px 5px", fontSize: 9, fontWeight: 600, color: isTop ? "#4338ca" : "#92400e" }}>
+          <span
+            style={{
+              flexShrink: 0,
+              borderRadius: 4,
+              background: isTop ? "#eef2ff" : "#fef3c7",
+              padding: "1px 5px",
+              fontSize: 9,
+              fontWeight: 600,
+              color: isTop ? "#4338ca" : "#92400e"
+            }}>
             {isTop ? "TOP" : "IFRAME"}
           </span>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 600 }}>
+          <span
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 12,
+              fontWeight: 600
+            }}>
             {hostOf(frameUrl)}
           </span>
           <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 500, color: "#94a3b8" }}>{records.length}</span>
@@ -450,7 +616,15 @@ function FrameGroup({ frameUrl, records }: FrameGroupData) {
       </div>
       {open && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8 }}>
-          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, color: "#94a3b8" }} title={frameUrl}>
+          <div
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 10,
+              color: "#94a3b8"
+            }}
+            title={frameUrl}>
             {pathOf(frameUrl)}
           </div>
           {sortRecords(records, dir).map((record) => (
@@ -492,22 +666,54 @@ function RecordItem({ record }: { record: NetmonRecord }) {
           {formatStatus(record)}
         </span>
         <span style={{ minWidth: 0, flex: 1 }}>
-          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 600, color: "#0f172a" }}>
+          <span
+            style={{
+              display: "block",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#0f172a"
+            }}>
             {record.url}
           </span>
-          <span style={{ marginTop: 2, display: "inline-block", borderRadius: 4, background: "#f1f5f9", padding: "1px 6px", fontSize: 9, fontWeight: 600, letterSpacing: "0.04em", color: "#64748b" }}>
+          <span
+            style={{
+              marginTop: 2,
+              display: "inline-block",
+              borderRadius: 4,
+              background: "#f1f5f9",
+              padding: "1px 6px",
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              color: "#64748b"
+            }}>
             {record.method}
           </span>
         </span>
-        <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 500, color: "#94a3b8" }}>{formatDuration(record.duration)}</span>
+        <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 500, color: "#94a3b8" }}>
+          {formatDuration(record.duration)}
+        </span>
       </button>
       {record.frameUrl && !isTopFrame(record) && <FramePath url={record.frameUrl} />}
       {open && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid #e2e8f0", padding: "0.5rem 0.75rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            borderTop: "1px solid #e2e8f0",
+            padding: "0.5rem 0.75rem"
+          }}>
           <ActionBar record={record} />
+          <ErrorSection record={record} />
+          <HeaderSection title="Query 参数" headers={queryParameters(record.url)} />
           <HeaderSection title="请求头" headers={record.requestHeaders} />
+          <RequestBodySection body={record.requestBody} />
           <HeaderSection title="响应头" headers={record.responseHeaders} />
-          <BodySection record={record} />
+          <BodySection title="响应体" body={record.body} note={record.bodyNote} />
         </div>
       )}
     </div>
@@ -518,7 +724,10 @@ function Panel({ initial }: { initial: NetmonTabState }) {
   const [state, setState] = useState<NetmonTabState>({ ...EMPTY_STATE, ...initial })
   const [ruleInput, setRuleInput] = useState("")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
-  const [pos, setPos] = useState<{ x: number; y: number }>({ x: window.innerWidth - 300 - PANEL_MARGIN, y: PANEL_MARGIN })
+  const [pos, setPos] = useState<{ x: number; y: number }>({
+    x: window.innerWidth - 300 - PANEL_MARGIN,
+    y: PANEL_MARGIN
+  })
   const listRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ dx: number; dy: number } | null>(null)
 
@@ -616,7 +825,16 @@ function Panel({ initial }: { initial: NetmonTabState }) {
           userSelect: "none"
         }}
         onMouseDown={onDragStart}>
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(255,255,255,0.62)" }}>network</span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "rgba(255,255,255,0.62)"
+          }}>
+          network
+        </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.25, margin: 0, color: "#fff" }}>网络监视器</h2>
           <button
@@ -699,7 +917,9 @@ function Panel({ initial }: { initial: NetmonTabState }) {
                 type="button"
                 title="点击移除"
                 onClick={() => sendCommand({ name: "removeRule", id: rule.id })}>
-                <span style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rule.pattern}</span>
+                <span style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {rule.pattern}
+                </span>
                 <CloseIcon size={10} />
               </button>
             ))}
@@ -707,7 +927,9 @@ function Panel({ initial }: { initial: NetmonTabState }) {
         )}
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>
-            {state.rules.length === 0 ? "添加一个 URL 片段才开始监视" : `命中 ${state.rules.length} 条规则，最新 ${RECORD_LIMIT} 条`}
+            {state.rules.length === 0
+              ? "添加一个 URL 片段才开始监视"
+              : `命中 ${state.rules.length} 条规则，最新 ${RECORD_LIMIT} 条`}
           </p>
           {state.records.length > 0 && (
             <SortButton dir={sortDir} onToggle={() => setSortDir((v) => (v === "desc" ? "asc" : "desc"))} />
@@ -717,11 +939,15 @@ function Panel({ initial }: { initial: NetmonTabState }) {
 
       <div ref={listRef} style={{ minHeight: 0, flex: 1, overflowY: "auto", padding: 12 }}>
         {state.records.length === 0 ? (
-          <p style={{ padding: "1.5rem 0", margin: 0, textAlign: "center", fontSize: 12, color: "#94a3b8" }}>暂无匹配请求</p>
+          <p style={{ padding: "1.5rem 0", margin: 0, textAlign: "center", fontSize: 12, color: "#94a3b8" }}>
+            暂无匹配请求
+          </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {frameGroups.length > 0
-              ? frameGroups.map((group) => <FrameGroup key={group.frameUrl} frameUrl={group.frameUrl} records={group.records} />)
+              ? frameGroups.map((group) => (
+                  <FrameGroup key={group.frameUrl} frameUrl={group.frameUrl} records={group.records} />
+                ))
               : flatRecords.map((record) => <RecordItem key={record.id} record={record} />)}
           </div>
         )}

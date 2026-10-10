@@ -16,6 +16,7 @@ interface NetmonPersistedState {
 
 const tabsState = new Map<number, NetmonTabState>()
 const injecting = new Set<number>()
+let restoringTabs: Promise<void> = Promise.resolve()
 
 function randomId(): string {
   return Math.random().toString(36).slice(2)
@@ -83,6 +84,8 @@ function handleEvent(event: NetmonEventMessage["event"], tabId: number, frameId:
   if (!state.enabled) return
   // No rules means nothing is being observed.
   if (state.rules.length === 0 || !matchesAnyRule(event.url, state.rules)) return
+  if (event.requestId && state.records.some((record) => record.id === event.requestId && record.frameId === frameId))
+    return
 
   const record: NetmonRecord = {
     id: event.requestId || randomId(),
@@ -95,7 +98,11 @@ function handleEvent(event: NetmonEventMessage["event"], tabId: number, frameId:
     duration: event.duration,
     requestHeaders: event.requestHeaders,
     responseHeaders: event.responseHeaders,
+    requestBody: event.requestBody,
     body: event.body,
+    bodyNote: event.bodyNote,
+    outcome: event.outcome,
+    error: event.error,
     ts: Date.now()
   }
   state.records = [...state.records, record].slice(-RECORD_LIMIT)
@@ -144,9 +151,9 @@ function canInject(url?: string): boolean {
 }
 
 function getNetmonScriptFiles(): string | null {
-  const entry = chrome.runtime.getManifest().content_scripts?.find(({ js }) =>
-    js?.some((file) => file.includes("netmon-content.ts"))
-  )
+  const entry = chrome.runtime
+    .getManifest()
+    .content_scripts?.find(({ js }) => js?.some((file) => file.includes("netmon-content.ts")))
   return entry?.js?.find((file) => file.includes("netmon-content.ts")) ?? null
 }
 
@@ -175,14 +182,21 @@ async function getContextTab(sender: chrome.runtime.MessageSender): Promise<chro
   return tab
 }
 
+export async function toggleNetmonForTab(tab?: chrome.tabs.Tab): Promise<void> {
+  if (!tab || tab.id === undefined || tab.id < 0 || !/^https?:\/\//i.test(tab.url ?? "")) return
+  await restoringTabs
+  handleCommand({ name: "toggle" }, tab.id, tab.url)
+}
+
 export function registerNetmonBackground(): void {
-  void loadAndRestoreTabs()
+  restoringTabs = loadAndRestoreTabs()
 
   chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
     const msg = message as NetmonEventMessage | NetmonCommandMessage | NetmonGetStateMessage
     if (msg?.target !== "netmon") return false
 
     void (async () => {
+      await restoringTabs
       const tab = await getContextTab(sender)
       const tabId = tab?.id
       if (!tabId) {
