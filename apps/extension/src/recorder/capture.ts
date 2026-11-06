@@ -1,3 +1,4 @@
+import { isShadowPanelEvent } from "@/content-script/shadow-panel"
 import type { RecorderLocator } from "./types"
 import type { CapturedEvent } from "./messages"
 import { PANEL_HOST_SELECTOR } from "./messages"
@@ -20,7 +21,7 @@ const CLICKABLE_SELECTOR = [
   "[role=tab]",
   "[contenteditable]",
   "[tabindex]",
-  "[onclick]",
+  "[onclick]"
 ].join(",")
 
 export type CaptureHandler = (event: CapturedEvent) => void
@@ -37,7 +38,12 @@ function isVisible(el: Element): boolean {
 }
 
 function isDisabled(el: Element): boolean {
-  if (el instanceof HTMLInputElement || el instanceof HTMLButtonElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLButtonElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  ) {
     return el.disabled
   }
   return el.getAttribute("aria-disabled") === "true"
@@ -109,6 +115,7 @@ function closestClickable(el: Element | null): Element | null {
 }
 
 function getClickTarget(ev: MouseEvent): Element | null {
+  if (isShadowPanelEvent(ev)) return null
   for (const node of ev.composedPath()) {
     if (!(node instanceof Element)) continue
     if (node.closest(PANEL_HOST_SELECTOR)) return null
@@ -154,6 +161,7 @@ export function startCapture(handler: CaptureHandler): () => void {
   }
 
   const onInput = (ev: Event) => {
+    if (isShadowPanelEvent(ev)) return
     safeEmit(() => {
       const target = ev.target as Element | null
       if (!target) return
@@ -174,6 +182,7 @@ export function startCapture(handler: CaptureHandler): () => void {
   }
 
   const onScroll = (ev: Event) => {
+    if (isShadowPanelEvent(ev)) return
     if (scrollTimer) clearTimeout(scrollTimer)
     scrollTimer = setTimeout(() => {
       safeEmit(() => {
@@ -186,7 +195,7 @@ export function startCapture(handler: CaptureHandler): () => void {
               kind: "scroll",
               scrollTop: Math.round(container.scrollTop),
               scrollLeft: Math.round(container.scrollLeft),
-              target: buildLocator(container),
+              target: buildLocator(container)
             })
             return
           }
@@ -194,7 +203,7 @@ export function startCapture(handler: CaptureHandler): () => void {
         handler({
           kind: "scroll",
           scrollTop: Math.round(window.scrollY),
-          scrollLeft: Math.round(window.scrollX),
+          scrollLeft: Math.round(window.scrollX)
         })
       })
     }, 300)

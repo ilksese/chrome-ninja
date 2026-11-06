@@ -3,7 +3,7 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-[data-recorder-panel] {
+[data-chrome-ninja-root] {
   position: fixed;
   top: 1rem;
   right: 1rem;
@@ -18,15 +18,15 @@
   -webkit-font-smoothing: antialiased;
 }
 
-[data-recorder-panel],
-[data-recorder-panel] *,
-[data-recorder-panel] *::before,
-[data-recorder-panel] *::after {
+[data-chrome-ninja-root],
+[data-chrome-ninja-root] *,
+[data-chrome-ninja-root] *::before,
+[data-chrome-ninja-root] *::after {
   box-sizing: border-box;
 }
 
 @layer base {
-  [data-recorder-panel] button {
+  [data-chrome-ninja-root] button {
     font-family: inherit;
     font-size: inherit;
     cursor: pointer;
@@ -35,17 +35,17 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  [data-recorder-panel] button:disabled {
+  [data-chrome-ninja-root] button:disabled {
     cursor: not-allowed;
   }
 
-  [data-recorder-panel] input {
+  [data-chrome-ninja-root] input {
     font-family: inherit;
   }
 }
 
-[data-recorder-panel] button:focus-visible,
-[data-recorder-panel] input:focus-visible {
+[data-chrome-ninja-root] button:focus-visible,
+[data-chrome-ninja-root] input:focus-visible {
   outline: 2px solid #0077ff;
   outline-offset: 2px;
 }

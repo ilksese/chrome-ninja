@@ -1,4 +1,5 @@
 import { createElement, render } from "preact"
+import { mountShadowPanel } from "@/content-script/shadow-panel"
 import type {
   NetmonError,
   NetmonFormEntry,
@@ -7,7 +8,7 @@ import type {
   NetmonRequestBody,
   NetmonTabState
 } from "./types"
-import { NETMON_POST_SOURCE, PANEL_HOST_ATTR, PANEL_HOST_SELECTOR } from "./types"
+import { NETMON_POST_SOURCE, PANEL_HOST_ATTR } from "./types"
 import Panel from "./Panel"
 
 const HOOK_URL = "src/network-monitor/hook.js"
@@ -15,7 +16,7 @@ const HOOK_URL = "src/network-monitor/hook.js"
 const isTopFrame = window === window.top
 
 let enabled = false
-let panelHost: HTMLElement | null = null
+let panel: ReturnType<typeof mountShadowPanel> | null = null
 let hookInjected = false
 
 function injectHook(): void {
@@ -28,14 +29,8 @@ function injectHook(): void {
 
 function mountPanel(state: NetmonTabState) {
   if (!isTopFrame) return
-  let host = document.querySelector<HTMLElement>(PANEL_HOST_SELECTOR)
-  if (!host) {
-    host = document.createElement("div")
-    host.setAttribute(PANEL_HOST_ATTR, "")
-    document.documentElement.appendChild(host)
-  }
-  panelHost = host
-  render(createElement(Panel, { initial: state }), host)
+  panel ??= mountShadowPanel("chrome-ninja-netmon", PANEL_HOST_ATTR)
+  render(createElement(Panel, { initial: state }), panel.container)
 }
 
 function applyState(state: NetmonTabState) {
@@ -48,10 +43,10 @@ function applyState(state: NetmonTabState) {
 }
 
 function unmountPanel() {
-  if (!panelHost) return
-  render(null, panelHost)
-  panelHost.remove()
-  panelHost = null
+  if (!panel) return
+  render(null, panel.container)
+  panel.host.remove()
+  panel = null
 }
 
 function setEnabled(next: boolean) {
