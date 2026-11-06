@@ -187,6 +187,7 @@ function classifyChangedFile(file) {
 
 	if (file.startsWith("src/content-script/")) return { target: "tabs", matches: allContentScriptMatches }
 	if (file === "src/user-agent/boss-loader.ts" || file === "src/user-agent/boss-anti-detection.js") return { target: "tabs", matches: bossContentScriptMatches }
+	if (file.startsWith("src/video-sniffer/") || file.startsWith("src/recorder/") || file.startsWith("src/network-monitor/")) return { target: "tabs", matches: allContentScriptMatches }
 
 	if (isUiOnlyFile(file)) return { target: "clients", scopes: ["popup", "options"] }
 

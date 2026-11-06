@@ -32,3 +32,17 @@
 - ESLint is flat config in `eslint.config.js`; it ignores only `dist`.
 - Root `pnpm style` formats only `apps/**/*.{ts,tsx}` and `packages/**/*.{ts,tsx}`.
 - Prefer existing aliases inside apps: extension has `@`, `@assets`, `@components`, `@hooks`, `@store`; web has only `@`.
+
+## Agent skills
+
+### Issue tracker
+
+需求、规格和任务使用 `.scratch/` 下的本地 Markdown；读写任务前先读 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+分诊使用五个默认角色；设置或解释分诊状态前先读 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+采用 single-context；探索代码前先读 `docs/agents/domain.md`，按其规则加载词汇表和 ADR。

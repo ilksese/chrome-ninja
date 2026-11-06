@@ -1,10 +1,11 @@
 import { createElement } from "preact"
 import { render } from "preact"
-import "./panel.css"
+import { mountShadowPanel } from "@/content-script/shadow-panel"
+import panelCss from "./panel.css?inline"
 import Panel from "./panel"
 import { startCapture } from "./capture"
 import { executeStep } from "./execute"
-import { PANEL_HOST_ATTR, PANEL_HOST_SELECTOR } from "./messages"
+import { PANEL_HOST_ATTR } from "./messages"
 
 const isTopFrame = window === window.top
 
@@ -14,33 +15,24 @@ function isRecorderEnabled(options: unknown): boolean {
 
 async function main() {
   let stopCapture: (() => void) | null = null
-  let panelHost: HTMLElement | null = null
-  let ownsPanelHost = false
+  let panel: ReturnType<typeof mountShadowPanel> | null = null
   let recorderEnabled = false
 
   const mountPanel = () => {
-    if (!isTopFrame || panelHost) return
+    if (!isTopFrame || panel) return
 
-    let host = document.querySelector<HTMLElement>(PANEL_HOST_SELECTOR)
-    if (!host) {
-      host = document.createElement("div")
-      host.setAttribute(PANEL_HOST_ATTR, "")
-      document.body.appendChild(host)
-      ownsPanelHost = true
-    }
-    panelHost = host
-    render(createElement(Panel, null), host)
+    panel = mountShadowPanel("chrome-ninja-recorder", PANEL_HOST_ATTR, panelCss)
+    render(createElement(Panel, null), panel.container)
   }
 
   const unmountPanel = () => {
     stopCapture?.()
     stopCapture = null
 
-    if (!isTopFrame || !panelHost) return
-    render(null, panelHost)
-    if (ownsPanelHost) panelHost.remove()
-    panelHost = null
-    ownsPanelHost = false
+    if (!isTopFrame || !panel) return
+    render(null, panel.container)
+    panel.host.remove()
+    panel = null
   }
 
   const syncRecorder = (enabled: boolean) => {

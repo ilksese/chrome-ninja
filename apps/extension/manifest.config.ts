@@ -38,6 +38,12 @@ const recorderScriptFiles = async () => {
   )
 }
 
+const netmonScriptFiles = async () => {
+  return await getAllFiles("src/network-monitor").then((files) =>
+    files.filter((file) => file.endsWith(".css") || file.endsWith(".js"))
+  )
+}
+
 export default {
   name: env.mode === "staging" ? `[INTERNAL] ${name}` : displayName || name,
   description,
@@ -96,6 +102,14 @@ export default {
       match_origin_as_fallback: true,
       matches: ["<all_urls>"],
       run_at: "document_idle"
+    },
+    {
+      all_frames: true,
+      js: ["src/network-monitor/netmon-content.ts"],
+      match_about_blank: true,
+      match_origin_as_fallback: true,
+      matches: ["<all_urls>"],
+      run_at: "document_idle"
     }
   ],
   // Full options page
@@ -113,7 +127,7 @@ export default {
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],
-      resources: [...(await contentScriptFiles()), ...(await recorderScriptFiles()), "src/user-agent/boss-anti-detection.js"]
+      resources: [...(await contentScriptFiles()), ...(await recorderScriptFiles()), ...(await netmonScriptFiles()), "src/user-agent/boss-anti-detection.js"]
     }
   ],
   icons: {
