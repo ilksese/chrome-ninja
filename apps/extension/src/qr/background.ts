@@ -25,18 +25,18 @@ export function registerQrBackground() {
 
 async function createQrMenus() {
   await chrome.contextMenus.removeAll()
-  chrome.contextMenus.create({ id: QR_MENU_PARENT_ID, title: "chrome ninja" })
+  chrome.contextMenus.create({ id: QR_MENU_PARENT_ID, title: "chrome ninja", contexts: ["all"] })
   chrome.contextMenus.create({
     id: QR_MENU_GENERATE_ID,
     parentId: QR_MENU_PARENT_ID,
     title: "生成二维码（当前页面链接）",
-    contexts: ["page"]
+    contexts: ["all"]
   })
   chrome.contextMenus.create({
     id: NETMON_MENU_TOGGLE_ID,
     parentId: QR_MENU_PARENT_ID,
     title: "开启／关闭网络监视器",
-    contexts: ["page"],
+    contexts: ["all"],
     documentUrlPatterns: ["http://*/*", "https://*/*"]
   })
   ninjaLog("qr menu ready")
