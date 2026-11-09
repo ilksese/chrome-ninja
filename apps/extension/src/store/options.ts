@@ -3,6 +3,7 @@ import type { Options } from "@/types"
 
 export const DEFAULT_OPTIONS: Options = {
   userAgent: "default",
+  reloadOnUserAgentChange: false,
   boss: {
     enabled: false
   },
@@ -25,6 +26,7 @@ export function mergeOptions(options?: Partial<Options>): Options {
   return {
     ...DEFAULT_OPTIONS,
     userAgent: options?.userAgent ?? DEFAULT_OPTIONS.userAgent,
+    reloadOnUserAgentChange: options?.reloadOnUserAgentChange ?? DEFAULT_OPTIONS.reloadOnUserAgentChange,
     boss: {
       ...DEFAULT_OPTIONS.boss,
       ...options?.boss

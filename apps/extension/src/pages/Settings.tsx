@@ -11,6 +11,7 @@ import type { Options } from "@/types"
 
 const validationSchema = v.object({
   userAgent: v.picklist(["default", "chrome-desktop", "chrome-android", "safira-desktop", "safira-ios"]),
+  reloadOnUserAgentChange: v.boolean(),
   boss: v.object({
     enabled: v.boolean()
   }),

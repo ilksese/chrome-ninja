@@ -137,6 +137,7 @@ const Home = ({ layout }: HomeProps) => {
   const [options, setOptions] = useAtom(optionsAtom)
   const navigate = useNavigate()
   const [isUserAgentOpen, setIsUserAgentOpen] = useState(false)
+  const [reloadOnUserAgentChange, setReloadOnUserAgentChange] = useState(options.reloadOnUserAgentChange)
   const [isLoginStateOpen, setIsLoginStateOpen] = useState(false)
   const [isQrOpen, setIsQrOpen] = useState(false)
   const [isTranslateOpen, setIsTranslateOpen] = useState(false)
@@ -188,6 +189,7 @@ const Home = ({ layout }: HomeProps) => {
 
   const openUserAgentDialog = () => {
     setSelectedUserAgent(options.userAgent)
+    setReloadOnUserAgentChange(options.reloadOnUserAgentChange)
     setError("")
     setIsUserAgentOpen(true)
   }
@@ -342,7 +344,8 @@ const Home = ({ layout }: HomeProps) => {
     setError("")
     try {
       await applyUserAgentRule(selectedUserAgent)
-      await setOptions({ ...options, userAgent: selectedUserAgent })
+      await setOptions({ ...options, userAgent: selectedUserAgent, reloadOnUserAgentChange })
+      if (reloadOnUserAgentChange) await chrome.tabs.reload()
       closeUserAgentDialog()
     } catch (err) {
       setError(err instanceof Error ? err.message : "User-Agent 应用失败")
@@ -566,6 +569,17 @@ const Home = ({ layout }: HomeProps) => {
                 </label>
               ))}
             </div>
+
+            <label className="mx-4 mb-4 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900">
+              <input
+                className="size-4 accent-[#0c5fb8]"
+                type="checkbox"
+                checked={reloadOnUserAgentChange}
+                disabled={isApplying}
+                onChange={(event) => setReloadOnUserAgentChange(event.currentTarget.checked)}
+              />
+              切换后立即刷新当前页面
+            </label>
 
             {error && <p className="px-4 pb-1 text-xs text-red-600">{error}</p>}
       </Dialog>

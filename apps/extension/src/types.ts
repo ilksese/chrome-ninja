@@ -26,4 +26,5 @@ export type Options = {
   videoSniffer: VideoSnifferOptionsType
   translate: TranslateOptionsType
   userAgent: UserAgentType
+  reloadOnUserAgentChange: boolean
 }
