@@ -1,5 +1,4 @@
 import { SITE } from "@/lib/site"
-import { ASSETS } from "@/lib/assets"
 import { Aurora } from "@/components/reactbits/aurora"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
@@ -43,11 +42,10 @@ export function Hero() {
         <div className="relative hidden h-[420px] items-center justify-center md:flex">
           <div className="animate-float absolute rotate-[-6deg] rounded-2xl border border-border bg-card/90 p-5 shadow-2xl backdrop-blur">
             <div className="mb-3 flex items-center gap-2">
-              <img src={ASSETS.bilibili} alt="" className="size-6" />
-              <span className="text-sm font-semibold">Bilibili</span>
+              <span className="text-sm font-semibold">视频嗅探</span>
             </div>
             <div className="space-y-2">
-              {["全站最高画质已就绪", "直播画质已提升", "广告已屏蔽"].map((t) => (
+              {["发现页面视频资源", "复制资源链接", "下载视频"].map((t) => (
                 <div key={t} className="flex items-center gap-2 rounded-lg bg-secondary/70 px-3 py-2 text-xs">
                   <span className="size-1.5 rounded-full bg-emerald-400" />
                   {t}
@@ -58,11 +56,10 @@ export function Hero() {
 
           <div className="animate-float absolute right-0 rotate-[8deg] rounded-2xl border border-border bg-card/90 p-5 shadow-2xl backdrop-blur [animation-delay:1.5s]">
             <div className="mb-3 flex items-center gap-2">
-              <img src={ASSETS.baidu} alt="" className="size-6" />
-              <span className="text-sm font-semibold">百度</span>
+              <span className="text-sm font-semibold">网络监视器</span>
             </div>
             <div className="space-y-2">
-              {["清爽搜索已生效", "干扰内容已移除"].map((t) => (
+              {["捕获页面请求", "查看请求与响应详情"].map((t) => (
                 <div key={t} className="flex items-center gap-2 rounded-lg bg-secondary/70 px-3 py-2 text-xs">
                   <span className="size-1.5 rounded-full bg-cyan-400" />
                   {t}

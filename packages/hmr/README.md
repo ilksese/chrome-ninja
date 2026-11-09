@@ -85,7 +85,7 @@ Runs in the background service worker.
 ```bash
 curl -X POST http://127.0.0.1:8787/command \
   -H "content-type: application/json" \
-  -d '{"target":"background","command":"storage:set","payload":{"area":"local","merge":true,"value":{"options":{"baidu":{"clearSearch":true}}}}}'
+  -d '{"target":"background","command":"storage:set","payload":{"area":"local","merge":true,"value":{"options":{"videoSniffer":{"enabled":true}}}}}'
 ```
 
 Payload:
@@ -94,7 +94,7 @@ Payload:
 - `value`: object passed to Chrome storage.
 - `merge`: when `true`, deep merges JSON objects per top-level storage key before writing.
 
-`merge` is generic JSON merging. It does not know about `options`, `baidu`, or any feature-specific schema.
+`merge` is generic JSON merging. It does not know about `options` or any feature-specific schema.
 
 ### tabs:query
 
@@ -132,7 +132,7 @@ Runs in a connected extension client such as `content`, `popup`, or `options`. I
 ```bash
 curl -X POST http://127.0.0.1:8787/command \
   -H "content-type: application/json" \
-  -d '{"target":"content","command":"dom:query","payload":{"selectors":{"css":"link[href*=\"baidu/search.css\"]","right":"#content_right","ai":".ai-entry"},"include":["count","exists","visible","display","text","rect","computedStyle"]}}'
+  -d '{"target":"content","command":"dom:query","payload":{"selectors":{"heading":"h1","links":"a[href]"},"include":["count","exists","visible","display","text","rect","computedStyle"]}}'
 ```
 
 Payload:
@@ -171,6 +171,6 @@ Use this for development reload flows. The command API is for debugging state an
 ## Safety
 
 - Keep the service bound to `127.0.0.1` unless there is a specific local-network debugging need.
-- Do not add module-specific commands such as `baidu:*` or `bilibili:*`.
+- Keep command names generic rather than feature-specific.
 - Do not add arbitrary runtime message forwarding or DOM interaction commands without a separate design review.
 - Prefer small, generic primitives that can be composed by scripts or agents using `curl`.

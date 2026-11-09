@@ -22,7 +22,7 @@
 - Prefer the CSP-safe `POST /command` API over `POST /execute` for new workflows.
 - Keep command names generic and low-level.
 - Allowed first-class command families are storage, tabs, and DOM query primitives.
-- Do not add module-specific commands like `baidu:*`, `bilibili:*`, `boss:*`, or `options:*`.
+- Do not add module-specific commands like `boss:*` or `options:*`.
 - Do not make this service understand feature-specific storage schemas. Use generic JSON payloads and let callers compose them.
 - Do not add arbitrary JavaScript execution paths beyond the existing legacy `/execute` endpoint.
 - Do not add broad forwarding APIs such as `runtime:send-message` or `tabs:send-message` without explicit review.

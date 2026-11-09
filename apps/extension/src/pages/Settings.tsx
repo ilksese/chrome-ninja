@@ -1,6 +1,4 @@
 import { useEffect, useRef } from "preact/hooks"
-import BaiduSetting from "@components/settings/BiaduSetting"
-import BilibiliSetting from "@components/settings/BilibiliSetting"
 import { cn } from "@chrome-ninja/utils"
 import { useAtom } from "jotai"
 import { FormProvider, useForm } from "react-hook-form"
@@ -13,14 +11,6 @@ import type { Options } from "@/types"
 
 const validationSchema = v.object({
   userAgent: v.picklist(["default", "chrome-desktop", "chrome-android", "safira-desktop", "safira-ios"]),
-  bilibili: v.object({
-    enabled: v.boolean(),
-    notify: v.boolean(),
-    blockAD: v.boolean()
-  }),
-  baidu: v.object({
-    clearSearch: v.boolean()
-  }),
   boss: v.object({
     enabled: v.boolean()
   }),
@@ -78,14 +68,12 @@ export default function Settings({ layout }: SettingsProps) {
           <div className="mb-4 flex items-end justify-between gap-4 border-b border-slate-200 pb-4">
             <span className="min-w-0">
               <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">settings</span>
-              <h1 className="mt-1 text-lg font-semibold leading-6 text-slate-950">按网站管理能力</h1>
-              <span className="mt-1 block text-xs leading-4 text-slate-500">每张卡片代表一个站点能力组，展开后微调具体开关。</span>
+              <h1 className="mt-1 text-lg font-semibold leading-6 text-slate-950">管理扩展能力</h1>
+              <span className="mt-1 block text-xs leading-4 text-slate-500">展开功能卡片，微调具体开关。</span>
             </span>
             <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 sm:inline-flex">自动保存到 Chrome storage</span>
           </div>
           <div className={cn("grid gap-3", isOptions && "md:grid-cols-2")}>
-            <BilibiliSetting />
-            <BaiduSetting />
             <VideoSnifferSetting />
           </div>
         </section>

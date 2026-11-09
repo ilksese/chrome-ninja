@@ -1,21 +1,12 @@
-import { FEATURES, MARQUEE_WORDS, type Feature } from "@/lib/site"
-import { ASSETS } from "@/lib/assets"
+import { FEATURES, MARQUEE_WORDS } from "@/lib/site"
 import { Reveal } from "@/components/reveal"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Marquee } from "@/components/reactbits/marquee"
 import type { LucideIcon } from "lucide-preact"
-import { MonitorPlay, Search, ShieldCheck, Radar } from "lucide-preact"
+import { MonitorPlay, Radar, Video, Languages } from "lucide-preact"
 
-const icons: LucideIcon[] = [MonitorPlay, Radar, ShieldCheck, Search]
-
-function TargetTag({ feature }: { feature: Feature }) {
-  return feature.target === "bilibili" ? (
-    <img src={ASSETS.bilibili} alt="Bilibili" className="size-4" />
-  ) : (
-    <img src={ASSETS.baidu} alt="百度" className="size-4" />
-  )
-}
+const icons: LucideIcon[] = [MonitorPlay, Radar, Video, Languages]
 
 export function Features() {
   return (
@@ -24,10 +15,10 @@ export function Features() {
         <Reveal className="mx-auto mb-14 max-w-2xl text-center">
           <Badge variant="secondary" className="mb-4">核心能力</Badge>
           <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">
-            一次安装，两个网站的清爽之旅
+            一次安装，常用浏览工具随手可用
           </h2>
           <p className="mt-4 text-muted-foreground">
-            chrome ninja 专注打磨 Bilibili 与百度的浏览细节，让高频操作自动完成。
+            视频嗅探、网络监视、操作录制与翻译，集中在一个扩展中。
           </p>
         </Reveal>
 
@@ -40,9 +31,6 @@ export function Features() {
                   <div className="mb-4 flex items-center justify-between">
                     <div className={`grid size-12 place-items-center rounded-xl bg-gradient-to-br ${feature.accent} text-white shadow-lg`}>
                       <Icon className="size-6" />
-                    </div>
-                    <div className="flex items-center gap-1 opacity-80">
-                      <TargetTag feature={feature} />
                     </div>
                   </div>
                   <h3 className="mb-2 text-lg font-semibold">{feature.title}</h3>

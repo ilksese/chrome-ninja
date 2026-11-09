@@ -6,8 +6,6 @@ import { buttonVariants } from "@/components/ui/button"
 
 const LINKS = [
   { href: "#features", label: "能力" },
-  { href: "#bilibili", label: "Bilibili" },
-  { href: "#baidu", label: "百度" },
   { href: "#install", label: "安装" }
 ]
 

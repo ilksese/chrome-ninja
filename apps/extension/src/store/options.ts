@@ -3,14 +3,6 @@ import type { Options } from "@/types"
 
 export const DEFAULT_OPTIONS: Options = {
   userAgent: "default",
-  bilibili: {
-    enabled: false,
-    blockAD: false,
-    notify: false
-  },
-  baidu: {
-    clearSearch: false
-  },
   boss: {
     enabled: false
   },
@@ -32,15 +24,7 @@ export const DEFAULT_OPTIONS: Options = {
 export function mergeOptions(options?: Partial<Options>): Options {
   return {
     ...DEFAULT_OPTIONS,
-    ...options,
-    bilibili: {
-      ...DEFAULT_OPTIONS.bilibili,
-      ...options?.bilibili
-    },
-    baidu: {
-      ...DEFAULT_OPTIONS.baidu,
-      ...options?.baidu
-    },
+    userAgent: options?.userAgent ?? DEFAULT_OPTIONS.userAgent,
     boss: {
       ...DEFAULT_OPTIONS.boss,
       ...options?.boss

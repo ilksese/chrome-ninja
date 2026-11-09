@@ -30,7 +30,7 @@ export function Install() {
                   <p className="text-sm leading-relaxed text-muted-foreground">{step.description}</p>
                 </div>
                 <div className="hidden shrink-0 self-center pr-4 font-mono text-sm text-muted-foreground md:block">
-                  {["pnpm build", "chrome://extensions", "bilibili.cn / baidu.com"][i]}
+                  {["pnpm build", "chrome://extensions", "打开扩展工具面板"][i]}
                 </div>
               </div>
             </Reveal>

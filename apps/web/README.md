@@ -14,7 +14,7 @@ chrome ninja 的创意橱窗站点，用于介绍扩展能力和安装方式。
 
 - `src/main.tsx`：Preact 挂载入口。
 - `src/App.tsx`：页面组合入口。
-- `src/sections`：Hero、功能、Bilibili、百度、安装、导航、页脚。
+- `src/sections`：Hero、功能、安装、导航、页脚。
 - `src/components/ui`：本地 UI primitives。
 - `src/components/reactbits`：本地动效组件。
 - `src/index.css`：Tailwind v4 token、动画和全局样式。

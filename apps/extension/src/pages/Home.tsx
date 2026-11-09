@@ -88,7 +88,7 @@ function IntroDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
             </h2>
           </span>
         </div>
-        <p className="mt-3 text-sm leading-5 text-white/78">B 站高画质、搜索减干扰、UA 身份切换。</p>
+        <p className="mt-3 text-sm leading-5 text-white/78">视频嗅探、网络监视、UA 身份切换。</p>
       </div>
 
       <div className="min-h-0 space-y-3 overflow-y-auto p-5">
