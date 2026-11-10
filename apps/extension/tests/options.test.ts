@@ -5,6 +5,7 @@ import { DEFAULT_OPTIONS, mergeOptions, optionsAtom } from "@/store/options"
 describe("mergeOptions", () => {
   it("restores defaults when no persisted options exist", () => {
     expect(mergeOptions()).toEqual(DEFAULT_OPTIONS)
+    expect(mergeOptions().videoSniffer.enabled).toBe(false)
   })
 
   it("merges nested settings without dropping defaults or explicit false values", () => {

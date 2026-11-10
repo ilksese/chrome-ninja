@@ -11,7 +11,7 @@ export const DEFAULT_OPTIONS: Options = {
     enabled: false
   },
   videoSniffer: {
-    enabled: true
+    enabled: false
   },
   translate: {
     enabled: false,

@@ -3,7 +3,7 @@ import type { VideoResource, VideoResourceKind, VideoSnifferResponse } from "./t
 const VIDEO_URL_PATTERN = /\.(?:mp4|webm|mov|m4v|mkv|avi|flv|m2ts|m3u8|mpd|ogv|ogg|m4a|mp3|aac|wav)(?:$|[?#])/i
 const MEDIA_SEGMENT_PATTERN = /\.(?:ts|m4s|cmfv|cmfa)(?:$|[?#])/i
 const resourcesByTab = new Map<number, Map<string, VideoResource>>()
-let videoSnifferEnabled = true
+let videoSnifferEnabled = false
 
 function hash(value: string) {
   let result = 2166136261
@@ -116,12 +116,15 @@ function clearTab(tabId: number) {
 }
 
 export function registerVideoSnifferBackground() {
+  let optionsChanged = false
   chrome.storage.local.get(["options"], ({ options }) => {
-    videoSnifferEnabled = options?.videoSniffer?.enabled ?? true
+    if (optionsChanged) return
+    videoSnifferEnabled = options?.videoSniffer?.enabled === true
   })
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !changes.options?.newValue) return
-    videoSnifferEnabled = changes.options.newValue.videoSniffer?.enabled ?? true
+    if (areaName !== "local" || !changes.options) return
+    optionsChanged = true
+    videoSnifferEnabled = changes.options.newValue?.videoSniffer?.enabled === true
     if (!videoSnifferEnabled) {
       for (const tabId of resourcesByTab.keys()) clearTab(tabId)
     }
@@ -159,6 +162,10 @@ export function registerVideoSnifferBackground() {
 
     if (message.type === "report" && sender.tab?.id !== undefined) {
       const tabId = sender.tab.id
+      if (!videoSnifferEnabled) {
+        sendResponse({ resources: [] })
+        return false
+      }
       const pageUrl = typeof message.pageUrl === "string" ? message.pageUrl : sender.tab.url || ""
       const title = typeof message.title === "string" ? message.title : sender.tab.title || ""
       for (const item of message.resources || []) {

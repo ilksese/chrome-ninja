@@ -3,10 +3,18 @@ import type { VideoResourceKind, VideoSnifferResponse } from "./types"
 const VIDEO_URL_PATTERN = /\.(?:mp4|webm|mov|m4v|mkv|avi|flv|m2ts|m3u8|mpd|ogv|ogg|m4a|mp3|aac|wav)(?:$|[?#])/i
 const MEDIA_SEGMENT_PATTERN = /\.(?:ts|m4s|cmfv|cmfa)(?:$|[?#])/i
 const observedUrls = new Set<string>()
-const videoOverlays = new Map<HTMLVideoElement, HTMLElement>()
+type VideoOverlay = {
+  host: HTMLElement
+  anchorName: string
+  previousAnchorName: string
+  previousAnchorPriority: string
+}
+const videoOverlays = new Map<HTMLVideoElement, VideoOverlay>()
+let nextVideoAnchorId = 0
 let flushTimer: number | undefined
 let overlayFrame: number | undefined
-let enabled = true
+let enabled = false
+let optionsChanged = false
 let domObserver: MutationObserver | undefined
 let performanceObserver: PerformanceObserver | undefined
 
@@ -83,6 +91,7 @@ function collectPageResources(force = false) {
 }
 
 function reportResources(force = false) {
+  if (!enabled) return
   const resources = collectPageResources(force)
   if (!resources.length) return
   void chrome.runtime.sendMessage({
@@ -166,10 +175,20 @@ async function downloadVideo(video: HTMLVideoElement, button: HTMLButtonElement)
 }
 
 function createVideoOverlay(video: HTMLVideoElement) {
+  const previousAnchorName = video.style.getPropertyValue("anchor-name")
+  const previousAnchorPriority = video.style.getPropertyPriority("anchor-name")
+  const existingAnchors = getComputedStyle(video).getPropertyValue("anchor-name").trim()
+  const anchor = `--chrome-ninja-video-${chrome.runtime.id}-${++nextVideoAnchorId}`
+  video.style.setProperty("anchor-name", existingAnchors && existingAnchors !== "none" ? `${existingAnchors}, ${anchor}` : anchor, "important")
   const host = document.createElement("div")
   host.dataset.chromeNinjaVideoDownload = ""
   host.style.setProperty("position", "fixed", "important")
-  host.style.setProperty("display", "block", "important")
+  host.style.setProperty("position-anchor", anchor, "important")
+  host.style.setProperty("position-visibility", "anchors-visible", "important")
+  host.style.setProperty("inset", "auto", "important")
+  host.style.setProperty("left", "calc(anchor(right) - 148px)", "important")
+  host.style.setProperty("top", "calc(anchor(top) + 8px)", "important")
+  host.style.setProperty("display", "none", "important")
   host.style.setProperty("width", "140px", "important")
   host.style.setProperty("height", "32px", "important")
   host.style.setProperty("margin", "0", "important")
@@ -194,23 +213,57 @@ function createVideoOverlay(video: HTMLVideoElement) {
     void downloadVideo(video, downloadButton)
   })
   document.documentElement.append(host)
-  videoOverlays.set(video, host)
+  videoOverlays.set(video, { host, anchorName: video.style.getPropertyValue("anchor-name"), previousAnchorName, previousAnchorPriority })
+}
+
+function removeVideoOverlay(video: HTMLVideoElement, overlay: VideoOverlay) {
+  overlay.host.remove()
+  if (video.style.getPropertyValue("anchor-name") === overlay.anchorName) {
+    if (overlay.previousAnchorName) video.style.setProperty("anchor-name", overlay.previousAnchorName, overlay.previousAnchorPriority)
+    else video.style.removeProperty("anchor-name")
+  }
+  videoOverlays.delete(video)
+}
+
+function isOverlayVisible(video: HTMLVideoElement, host: HTMLElement) {
+  const rect = video.getBoundingClientRect()
+  if (rect.width < 160 || rect.height < 90 || getComputedStyle(video).visibility !== "visible") return false
+  const buttons = host.getBoundingClientRect()
+  let left = 0
+  let top = 0
+  let right = window.innerWidth
+  let bottom = window.innerHeight
+  for (let parent = video.parentElement; parent && parent !== document.documentElement; parent = parent.parentElement) {
+    const style = getComputedStyle(parent)
+    const clipX = /^(auto|scroll|hidden|clip)$/.test(style.overflowX || style.overflow)
+    const clipY = /^(auto|scroll|hidden|clip)$/.test(style.overflowY || style.overflow)
+    if (!clipX && !clipY) continue
+    const bounds = parent.getBoundingClientRect()
+    const scaleX = parent.offsetWidth ? bounds.width / parent.offsetWidth : 1
+    const scaleY = parent.offsetHeight ? bounds.height / parent.offsetHeight : 1
+    if (clipX) {
+      left = Math.max(left, bounds.left + parent.clientLeft * scaleX)
+      right = Math.min(right, bounds.left + (parent.clientLeft + parent.clientWidth) * scaleX)
+    }
+    if (clipY) {
+      top = Math.max(top, bounds.top + parent.clientTop * scaleY)
+      bottom = Math.min(bottom, bounds.top + (parent.clientTop + parent.clientHeight) * scaleY)
+    }
+  }
+  return buttons.width > 0 && buttons.height > 0 && buttons.left >= left && buttons.top >= top && buttons.right <= right && buttons.bottom <= bottom
 }
 
 function updateVideoOverlays() {
   overlayFrame = undefined
-  for (const [video, host] of videoOverlays) {
+  for (const [video, overlay] of videoOverlays) {
     if (!video.isConnected || !enabled) {
-      host.remove()
-      videoOverlays.delete(video)
+      removeVideoOverlay(video, overlay)
       continue
     }
-    const rect = video.getBoundingClientRect()
-    const visible = rect.width >= 160 && rect.height >= 90 && rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth
-    host.hidden = !visible
-    if (!visible) continue
-    host.style.left = Math.max(6, rect.right - 148) + "px"
-    host.style.top = Math.max(6, rect.top + 8) + "px"
+    const { host } = overlay
+    host.style.setProperty("display", "block", "important")
+    const visible = isOverlayVisible(video, host)
+    host.style.setProperty("display", visible ? "block" : "none", "important")
   }
 }
 
@@ -220,7 +273,7 @@ function scheduleOverlayLayout() {
 }
 
 function syncVideoOverlays() {
-  if (!enabled) return
+  if (!enabled || !CSS.supports("anchor-name", "--chrome-ninja-video") || !CSS.supports("top", "anchor(top)")) return
   document.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
     if (!videoOverlays.has(video)) createVideoOverlay(video)
   })
@@ -265,12 +318,12 @@ function stopObservers() {
   document.removeEventListener("scroll", scheduleOverlayLayout, true)
   window.removeEventListener("resize", scheduleOverlayLayout)
   document.removeEventListener("fullscreenchange", scheduleOverlayLayout)
+  window.removeEventListener("load", scheduleReport)
   window.clearTimeout(flushTimer)
   flushTimer = undefined
   if (overlayFrame !== undefined) window.cancelAnimationFrame(overlayFrame)
   overlayFrame = undefined
-  for (const host of videoOverlays.values()) host.remove()
-  videoOverlays.clear()
+  for (const [video, overlay] of videoOverlays) removeVideoOverlay(video, overlay)
   observedUrls.clear()
 }
 
@@ -284,14 +337,16 @@ chrome.runtime.onMessage.addListener((message) => {
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "local" || !changes.options?.newValue) return
-  const nextEnabled = changes.options.newValue.videoSniffer?.enabled ?? true
+  if (areaName !== "local" || !changes.options) return
+  optionsChanged = true
+  const nextEnabled = changes.options.newValue?.videoSniffer?.enabled === true
   enabled = nextEnabled
   if (enabled) startObservers()
   else stopObservers()
 })
 
 chrome.storage.local.get(["options"], ({ options }) => {
-  enabled = options?.videoSniffer?.enabled ?? true
+  if (optionsChanged) return
+  enabled = options?.videoSniffer?.enabled === true
   if (enabled) startObservers()
 })
