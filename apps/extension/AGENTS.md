@@ -7,11 +7,11 @@
 - Background service worker entry is `src/background/index.ts`.
 - Content scripts for translation, video sniffing, recording, and network monitoring are registered separately in `manifest.config.ts`.
 - `src/content-script/index.ts` connects the top-level page to the development HMR/debug client; keep it independent of feature handlers.
-- Home page feature entry points should stay card-based; when an interaction needs detailed editing, use a single card that opens a modal dialog instead of expanding the full workflow inline.
+- Home page feature entry points stay card-based. Cookie editor opens its webpage panel; other detailed editing workflows use modal dialogs.
 
 ## MV3 Gotchas
 
-- `manifest.config.ts` scans `src/content-script` and puts every file in `web_accessible_resources`; keep injected JS/CSS under that tree.
+- `manifest.config.ts` scans `src/content-script` into `web_accessible_resources`. For separately injected modules, use CRXJS `?script` loaders with `chrome.scripting.executeScript({ files })` so their dependencies are bundled and exposed; functions passed through `func` must be self-contained.
 - Default extension options live in `src/store/options.ts` (`DEFAULT_OPTIONS`); option types live in `src/types.ts`.
 - `chrome.storage.local` is the source of persisted options; `src/store/options.ts` mirrors it into Jotai.
 
@@ -22,7 +22,16 @@
 - `pnpm install` reports missing React peer warnings for those libraries; this is expected because React runtime is intentionally not installed.
 - Tailwind v4 is wired through `@tailwindcss/vite`; `src/index.css` imports theme/utilities only, so Tailwind preflight stays disabled.
 
+## Cookie Editor
+
+- `src/cookie-editor/background.ts` owns the `cookie-editor` message commands, Cookie observation, and persisted disable rules. Read the Cookie editor section in `README.md` for removal attribution and recovery boundaries.
+- The Popup component only opens the editor. `src/cookie-editor/content.ts` is injected with a CRXJS `?script` loader and acknowledges mounting; `panel.ts` owns webpage drafts and subscriptions.
+- Scope comes from the sender tab (top frame), its Cookie store, and `chrome.cookies.getPartitionKey`. Identity includes name, Domain, Path, store, and both partition key fields. Expired writes remove an exact identity; URL/name removal is insufficient.
+- Tests exercise messages/events in `tests/cookie-editor-background.test.ts`, webpage behavior in `tests/cookie-editor-panel.test.ts`, and the Popup entry in `tests/cookie-editor-entry.test.tsx`.
+
 ## Checks
+
+- Run relevant Vitest projects with root `pnpm test --project extension --project extension-ui`.
 
 - Run `pnpm --filter @chrome-ninja/extension lint` and `pnpm --filter @chrome-ninja/extension typecheck` for source edits.
 - Run `pnpm --filter @chrome-ninja/extension build` when touching manifest, background, content-script, assets, or Vite config.

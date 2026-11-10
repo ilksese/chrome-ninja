@@ -10,8 +10,10 @@ import { registerRecorderBackground } from "@/recorder/background"
 import { registerTranslateBackground } from "@/translate/background"
 import { registerVideoSnifferBackground } from "@/video-sniffer/background"
 import { registerNetmonBackground } from "@/network-monitor/background"
+import { registerCookieEditorBackground } from "@/cookie-editor/background"
 
 ninjaLog("background runing")
+registerCookieEditorBackground()
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
 registerLoginStateExportBackground()

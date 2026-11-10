@@ -15,7 +15,7 @@
 - Whole repo checks: `pnpm lint` then `pnpm typecheck`.
 - Extension focused checks: `pnpm --filter @chrome-ninja/extension lint`, `pnpm --filter @chrome-ninja/extension typecheck`, `pnpm --filter @chrome-ninja/extension build`.
 - Web focused checks: `pnpm --filter @chrome-ninja/web lint`, `pnpm --filter @chrome-ninja/web typecheck`, `pnpm --filter @chrome-ninja/web build`.
-- There is no configured test runner in this repo; do not invent `pnpm test` as a verification step.
+- Vitest is configured at the root. Run `pnpm test`; limit extension checks with `--project extension --project extension-ui` when appropriate.
 
 ## Dev Debugging/Popup Debugging
 
