@@ -1,3 +1,7 @@
+import van, { type State } from "vanjs-core"
+import { Button, Row } from "@/content-ui/components"
+import { createScope } from "@/content-ui/lifecycle"
+import { theme } from "@/content-ui/theme"
 import type { VideoResourceKind, VideoSnifferResponse } from "./types"
 
 const VIDEO_URL_PATTERN = /\.(?:mp4|webm|mov|m4v|mkv|avi|flv|m2ts|m3u8|mpd|ogv|ogg|m4a|mp3|aac|wav)(?:$|[?#])/i
@@ -5,6 +9,7 @@ const MEDIA_SEGMENT_PATTERN = /\.(?:ts|m4s|cmfv|cmfa)(?:$|[?#])/i
 const observedUrls = new Set<string>()
 type VideoOverlay = {
   host: HTMLElement
+  dispose: () => void
   anchorName: string
   previousAnchorName: string
   previousAnchorPriority: string
@@ -38,7 +43,9 @@ function resolveUrl(value?: string | null) {
 }
 
 function findMimeType(url: string) {
-  const element = Array.from(document.querySelectorAll<HTMLSourceElement>("video source, audio source, source")).find((source) => resolveUrl(source.src) === url)
+  const element = Array.from(document.querySelectorAll<HTMLSourceElement>("video source, audio source, source")).find(
+    (source) => resolveUrl(source.src) === url
+  )
   return element?.type || ""
 }
 
@@ -78,7 +85,12 @@ function collectPageResources(force = false) {
   })
   performance.getEntriesByType("resource").forEach((entry) => {
     const resource = entry as PerformanceResourceTiming
-    if (VIDEO_URL_PATTERN.test(resource.name) || resource.initiatorType === "video" || resource.initiatorType === "audio") urls.add(resource.name)
+    if (
+      VIDEO_URL_PATTERN.test(resource.name) ||
+      resource.initiatorType === "video" ||
+      resource.initiatorType === "audio"
+    )
+      urls.add(resource.name)
   })
   return Array.from(urls)
     .filter((url) => !MEDIA_SEGMENT_PATTERN.test(url))
@@ -107,12 +119,17 @@ function getDownloadUrl(video: HTMLVideoElement) {
   const directUrl = resolveUrl(video.currentSrc || video.src)
   if (/^(?:https?|data):/i.test(directUrl) && !MEDIA_SEGMENT_PATTERN.test(directUrl)) return directUrl
   const resources = collectPageResources(true)
-  return resources.find((item) => item.kind === "playlist" || item.kind === "manifest")?.url || resources.find((item) => item.kind === "video" && /^(?:https?|data):/i.test(item.url))?.url || ""
+  return (
+    resources.find((item) => item.kind === "playlist" || item.kind === "manifest")?.url ||
+    resources.find((item) => item.kind === "video" && /^(?:https?|data):/i.test(item.url))?.url ||
+    ""
+  )
 }
 
-function setOverlayButtonState(button: HTMLButtonElement, label: string, disabled: boolean) {
-  button.textContent = label
-  button.disabled = disabled
+type OverlayButtonState = State<{ label: string; disabled: boolean }>
+
+function setOverlayButtonState(button: OverlayButtonState, label: string, disabled: boolean) {
+  button.val = { label, disabled }
 }
 
 function copyTextWithSelection(value: string) {
@@ -120,11 +137,11 @@ function copyTextWithSelection(value: string) {
   textarea.value = value
   textarea.readOnly = true
   textarea.setAttribute("aria-hidden", "true")
-  textarea.style.setProperty("position", "fixed", "important")
-  textarea.style.setProperty("left", "-9999px", "important")
-  textarea.style.setProperty("top", "0", "important")
-  textarea.style.setProperty("opacity", "0", "important")
-  textarea.style.setProperty("pointer-events", "none", "important")
+  textarea.style.setProperty("position", "fixed", "")
+  textarea.style.setProperty("left", "-9999px", "")
+  textarea.style.setProperty("top", "0", "")
+  textarea.style.setProperty("opacity", "0", "")
+  textarea.style.setProperty("pointer-events", "none", "")
   document.documentElement.append(textarea)
   textarea.select()
   textarea.setSelectionRange(0, value.length)
@@ -138,11 +155,15 @@ async function writeClipboard(value: string) {
   await navigator.clipboard.writeText(value)
 }
 
-async function copyVideoUrl(video: HTMLVideoElement, button: HTMLButtonElement) {
+async function copyVideoUrl(
+  video: HTMLVideoElement,
+  button: OverlayButtonState,
+  scope: ReturnType<typeof createScope>
+) {
   const url = getDownloadUrl(video)
   if (!url) {
     setOverlayButtonState(button, "无地址", true)
-    window.setTimeout(() => setOverlayButtonState(button, "复制", false), 1600)
+    scope.timeout(() => setOverlayButtonState(button, "复制", false), 1600)
     return
   }
   try {
@@ -151,27 +172,35 @@ async function copyVideoUrl(video: HTMLVideoElement, button: HTMLButtonElement) 
   } catch {
     setOverlayButtonState(button, "失败", true)
   }
-  window.setTimeout(() => setOverlayButtonState(button, "复制", false), 1600)
+  scope.timeout(() => setOverlayButtonState(button, "复制", false), 1600)
 }
 
-async function downloadVideo(video: HTMLVideoElement, button: HTMLButtonElement) {
+async function downloadVideo(
+  video: HTMLVideoElement,
+  button: OverlayButtonState,
+  scope: ReturnType<typeof createScope>
+) {
   const url = getDownloadUrl(video)
   if (!url) {
     setOverlayButtonState(button, "未找到地址", true)
-    window.setTimeout(() => setOverlayButtonState(button, "↓ 下载", false), 1600)
+    scope.timeout(() => setOverlayButtonState(button, "↓ 下载", false), 1600)
     return
   }
 
   setOverlayButtonState(button, "下载中…", true)
   reportResources(true)
   try {
-    const response = (await chrome.runtime.sendMessage({ target: "video-sniffer", type: "download", url })) as VideoSnifferResponse
+    const response = (await chrome.runtime.sendMessage({
+      target: "video-sniffer",
+      type: "download",
+      url
+    })) as VideoSnifferResponse
     if (response.error) throw new Error(response.error)
     setOverlayButtonState(button, "✓ 已添加", true)
   } catch {
     setOverlayButtonState(button, "下载失败", true)
   }
-  window.setTimeout(() => setOverlayButtonState(button, "↓ 下载", false), 1600)
+  scope.timeout(() => setOverlayButtonState(button, "↓ 下载", false), 1600)
 }
 
 function createVideoOverlay(video: HTMLVideoElement) {
@@ -179,47 +208,77 @@ function createVideoOverlay(video: HTMLVideoElement) {
   const previousAnchorPriority = video.style.getPropertyPriority("anchor-name")
   const existingAnchors = getComputedStyle(video).getPropertyValue("anchor-name").trim()
   const anchor = `--chrome-ninja-video-${chrome.runtime.id}-${++nextVideoAnchorId}`
-  video.style.setProperty("anchor-name", existingAnchors && existingAnchors !== "none" ? `${existingAnchors}, ${anchor}` : anchor, "important")
-  const host = document.createElement("div")
-  host.dataset.chromeNinjaVideoDownload = ""
-  host.style.setProperty("position", "fixed", "important")
-  host.style.setProperty("position-anchor", anchor, "important")
-  host.style.setProperty("position-visibility", "anchors-visible", "important")
-  host.style.setProperty("inset", "auto", "important")
-  host.style.setProperty("left", "calc(anchor(right) - 148px)", "important")
-  host.style.setProperty("top", "calc(anchor(top) + 8px)", "important")
-  host.style.setProperty("display", "none", "important")
-  host.style.setProperty("width", "140px", "important")
-  host.style.setProperty("height", "32px", "important")
-  host.style.setProperty("margin", "0", "important")
-  host.style.setProperty("padding", "0", "important")
-  host.style.setProperty("z-index", "2147483647", "important")
-  host.style.setProperty("pointer-events", "none", "important")
-  host.style.setProperty("contain", "layout style paint", "important")
-  host.style.transition = "opacity 120ms ease"
-
-  const shadow = host.attachShadow({ mode: "closed" })
-  shadow.innerHTML = "<style>:host{all:initial}.actions{display:flex;gap:4px}button{all:unset;pointer-events:auto;box-sizing:border-box;width:68px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.22);border-radius:9px;background:rgba(11,17,27,.88);backdrop-filter:blur(10px);box-shadow:0 8px 22px rgba(0,0,0,.28);color:#fff;font:600 12px/1 Microsoft YaHei UI,PingFang SC,sans-serif;cursor:pointer;transition:background .15s,transform .15s}button.copy{color:#dbeafe;background:rgba(15,23,42,.9)}button.download{background:#0077ff}button:hover{background:#0064d8}button.copy:hover{background:#334155}button:active{transform:scale(.96)}button:disabled{cursor:default;opacity:.82}</style><div class='actions'><button class='copy' type='button' title='复制视频下载地址'>复制</button><button class='download' type='button' title='使用 Chrome Ninja 下载视频'>↓ 下载</button></div>"
-  const copyButton = shadow.querySelector("button.copy") as HTMLButtonElement
-  const downloadButton = shadow.querySelector("button.download") as HTMLButtonElement
+  video.style.setProperty(
+    "anchor-name",
+    existingAnchors && existingAnchors !== "none" ? `${existingAnchors}, ${anchor}` : anchor,
+    ""
+  )
+  const scope = createScope()
+  const host = Row({
+    "data-chrome-ninja-video-download": "",
+    "data-chrome-ninja-ui": "",
+    style: {
+      position: "fixed",
+      display: "none",
+      width: 140,
+      height: 32,
+      gap: 4,
+      margin: 0,
+      padding: 0,
+      zIndex: theme.layer,
+      pointerEvents: "none",
+      contain: "layout style paint",
+      transition: "opacity 120ms ease"
+    }
+  })
+  host.style.setProperty("position-anchor", anchor)
+  host.style.setProperty("position-visibility", "anchors-visible")
+  host.style.setProperty("inset", "auto")
+  host.style.setProperty("left", "calc(anchor(right) - 148px)")
+  host.style.setProperty("top", "calc(anchor(top) + 8px)")
+  const buttonStyle = { pointerEvents: "auto", width: 68, height: 32, padding: 0, fontSize: 12 }
+  const copyState = van.state({ label: "复制", disabled: false })
+  const downloadState = van.state({ label: "↓ 下载", disabled: false })
+  const copyButton = Button(
+    { title: "复制视频下载地址", style: buttonStyle, disabled: () => copyState.val.disabled },
+    () => copyState.val.label
+  )
+  const downloadButton = Button(
+    {
+      variant: "primary",
+      title: "使用 Chrome Ninja 下载视频",
+      style: buttonStyle,
+      disabled: () => downloadState.val.disabled
+    },
+    () => downloadState.val.label
+  )
+  host.append(copyButton, downloadButton)
   copyButton.addEventListener("click", (event) => {
     event.preventDefault()
     event.stopPropagation()
-    void copyVideoUrl(video, copyButton)
+    void copyVideoUrl(video, copyState, scope)
   })
   downloadButton.addEventListener("click", (event) => {
     event.preventDefault()
     event.stopPropagation()
-    void downloadVideo(video, downloadButton)
+    void downloadVideo(video, downloadState, scope)
   })
   document.documentElement.append(host)
-  videoOverlays.set(video, { host, anchorName: video.style.getPropertyValue("anchor-name"), previousAnchorName, previousAnchorPriority })
+  videoOverlays.set(video, {
+    host,
+    dispose: scope.dispose,
+    anchorName: video.style.getPropertyValue("anchor-name"),
+    previousAnchorName,
+    previousAnchorPriority
+  })
 }
 
 function removeVideoOverlay(video: HTMLVideoElement, overlay: VideoOverlay) {
+  overlay.dispose()
   overlay.host.remove()
   if (video.style.getPropertyValue("anchor-name") === overlay.anchorName) {
-    if (overlay.previousAnchorName) video.style.setProperty("anchor-name", overlay.previousAnchorName, overlay.previousAnchorPriority)
+    if (overlay.previousAnchorName)
+      video.style.setProperty("anchor-name", overlay.previousAnchorName, overlay.previousAnchorPriority)
     else video.style.removeProperty("anchor-name")
   }
   videoOverlays.delete(video)
@@ -250,7 +309,14 @@ function isOverlayVisible(video: HTMLVideoElement, host: HTMLElement) {
       bottom = Math.min(bottom, bounds.top + (parent.clientTop + parent.clientHeight) * scaleY)
     }
   }
-  return buttons.width > 0 && buttons.height > 0 && buttons.left >= left && buttons.top >= top && buttons.right <= right && buttons.bottom <= bottom
+  return (
+    buttons.width > 0 &&
+    buttons.height > 0 &&
+    buttons.left >= left &&
+    buttons.top >= top &&
+    buttons.right <= right &&
+    buttons.bottom <= bottom
+  )
 }
 
 function updateVideoOverlays() {
@@ -261,9 +327,9 @@ function updateVideoOverlays() {
       continue
     }
     const { host } = overlay
-    host.style.setProperty("display", "block", "important")
+    host.style.setProperty("display", "flex", "")
     const visible = isOverlayVisible(video, host)
-    host.style.setProperty("display", visible ? "block" : "none", "important")
+    host.style.setProperty("display", visible ? "flex" : "none", "")
   }
 }
 
@@ -349,4 +415,11 @@ chrome.storage.local.get(["options"], ({ options }) => {
   if (optionsChanged) return
   enabled = options?.videoSniffer?.enabled === true
   if (enabled) startObservers()
+})
+
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted) {
+    enabled = false
+    stopObservers()
+  }
 })

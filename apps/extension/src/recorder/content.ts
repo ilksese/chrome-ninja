@@ -1,7 +1,4 @@
-import { createElement } from "preact"
-import { render } from "preact"
-import { mountShadowPanel } from "@/content-script/shadow-panel"
-import panelCss from "./panel.css?inline"
+import { mountContentUI } from "@/content-ui/lifecycle"
 import Panel from "./panel"
 import { startCapture } from "./capture"
 import { executeStep } from "./execute"
@@ -15,14 +12,13 @@ function isRecorderEnabled(options: unknown): boolean {
 
 async function main() {
   let stopCapture: (() => void) | null = null
-  let panel: ReturnType<typeof mountShadowPanel> | null = null
+  let panel: ReturnType<typeof mountContentUI> | null = null
   let recorderEnabled = false
 
   const mountPanel = () => {
     if (!isTopFrame || panel) return
 
-    panel = mountShadowPanel("chrome-ninja-recorder", PANEL_HOST_ATTR, panelCss)
-    render(createElement(Panel, null), panel.container)
+    panel = mountContentUI("chrome-ninja-recorder", PANEL_HOST_ATTR, Panel())
   }
 
   const unmountPanel = () => {
@@ -30,8 +26,7 @@ async function main() {
     stopCapture = null
 
     if (!isTopFrame || !panel) return
-    render(null, panel.container)
-    panel.host.remove()
+    panel.dispose()
     panel = null
   }
 

@@ -1,4 +1,5 @@
 import { ninjaLog } from "@chrome-ninja/utils"
+import { createElementCopyMenus, handleElementCopyMenu } from "@/element-copy/background"
 import { toggleNetmonForTab } from "@/network-monitor/background"
 
 const QR_MENU_PARENT_ID = "chrome-ninja"
@@ -10,6 +11,7 @@ export function registerQrBackground() {
   void createQrMenus()
 
   chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (handleElementCopyMenu(info, tab)) return
     if (info.menuItemId === NETMON_MENU_TOGGLE_ID) {
       void toggleNetmonForTab(tab).catch((error) => console.error("右键切换网络监视器失败", error))
       return
@@ -26,6 +28,7 @@ export function registerQrBackground() {
 async function createQrMenus() {
   await chrome.contextMenus.removeAll()
   chrome.contextMenus.create({ id: QR_MENU_PARENT_ID, title: "chrome ninja", contexts: ["all"] })
+  createElementCopyMenus(QR_MENU_PARENT_ID)
   chrome.contextMenus.create({
     id: QR_MENU_GENERATE_ID,
     parentId: QR_MENU_PARENT_ID,

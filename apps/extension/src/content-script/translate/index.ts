@@ -1,30 +1,10 @@
+import van from "vanjs-core"
+import { Button, Column, IconButton, PanelHeader, Row, Status, Surface, Text } from "@/content-ui/components"
+import { createScope, isContentUIEvent, mountContentUI } from "@/content-ui/lifecycle"
+import { theme } from "@/content-ui/theme"
 import { TRANSLATE_MAX_LENGTH } from "@/translate/constants"
 
 const MIN_LENGTH = 2
-const HOST_STYLE = "all: initial; position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647;"
-
-const STYLES = `
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
-.cn-t-bubble { position: fixed; display: none; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: #101828; border: 1px solid rgba(255,255,255,0.14); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 8px 20px rgba(16,24,40,0.28); cursor: pointer; user-select: none; }
-.cn-t-bubble:hover { background: #1d2939; }
-.cn-t-card { position: fixed; display: none; width: 320px; max-width: calc(100vw - 16px); background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 18px 44px rgba(15,23,42,0.22); overflow: hidden; font-size: 13px; color: #0f172a; }
-.cn-t-card-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-.cn-t-card-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #005bd1; }
-.cn-t-card-close { border: 0; background: transparent; padding: 2px 6px; border-radius: 6px; font-size: 16px; line-height: 1; color: #64748b; cursor: pointer; }
-.cn-t-card-close:hover { background: #e2e8f0; color: #0f172a; }
-.cn-t-card-body { padding: 12px; }
-.cn-t-card-loading { display: flex; align-items: center; gap: 8px; color: #64748b; }
-.cn-t-spinner { width: 14px; height: 14px; border: 2px solid #e2e8f0; border-top-color: #005bd1; border-radius: 50%; animation: cn-t-spin 0.8s linear infinite; }
-@keyframes cn-t-spin { to { transform: rotate(360deg); } }
-.cn-t-card-error { color: #b42318; line-height: 1.5; }
-.cn-t-card-text { line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow-y: auto; }
-.cn-t-card-note { margin-top: 8px; font-size: 11px; color: #94a3b8; }
-.cn-t-card-foot { display: flex; justify-content: flex-end; padding: 0 12px 12px; }
-.cn-t-card-copy { border: 1px solid #cbd5e1; background: #fff; color: #0f172a; padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.cn-t-card-copy:hover { background: #f1f5f9; }
-.cn-t-card-copy.copied { background: #ecfdf3; border-color: #a7f3d0; color: #067647; }
-`
-
 type TranslateResponse = {
   ok: boolean
   data?: string
@@ -40,7 +20,13 @@ type CardState =
 let enabled = false
 let attached = false
 let host: HTMLElement | null = null
-let shadow: ShadowRoot | null = null
+let disposeUI: (() => void) | null = null
+let uiScope: ReturnType<typeof createScope> | null = null
+let cardBody: HTMLDivElement | null = null
+let copyButton: HTMLButtonElement | null = null
+let copyFooter: HTMLDivElement | null = null
+let cancelSpinner: (() => void) | null = null
+const copied = van.state(false)
 let bubble: HTMLDivElement | null = null
 let card: HTMLDivElement | null = null
 let currentRange: Range | null = null
@@ -55,38 +41,78 @@ function readEnabled(options: unknown): boolean {
 
 function attach() {
   if (attached) return
-  const root = document.body ?? document.documentElement
-  if (!root) return
+  if (!document.documentElement) return
 
-  host = document.createElement("div")
-  host.style.cssText = HOST_STYLE
-  root.appendChild(host)
-  shadow = host.attachShadow({ mode: "closed" })
-  const style = document.createElement("style")
-  style.textContent = STYLES
-  shadow.appendChild(style)
-
-  bubble = document.createElement("div")
-  bubble.className = "cn-t-bubble"
-  bubble.textContent = "译"
-  bubble.addEventListener("mousedown", (event) => {
+  uiScope = createScope()
+  const preserveSelection = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
+  }
+  bubble = Row(
+    { style: { position: "fixed", display: "none", width: 30, height: 30 } },
+    IconButton(
+      {
+        "aria-label": "翻译选中文本",
+        title: "翻译选中文本",
+        variant: "primary",
+        style: { width: 30, height: 30, borderRadius: "50%", boxShadow: theme.shadow },
+        onmousedown: preserveSelection,
+        onclick: () => {
+          void startTranslate()
+        }
+      },
+      "译"
+    )
+  )
+  cardBody = Column({ style: { padding: 12 } })
+  copyButton = Button(
+    {
+      style: { marginLeft: "auto", marginRight: 12, marginBottom: 12, fontSize: 12 },
+      onclick: () => {
+        if (cardState?.kind !== "result") return
+        const resultText = cardState.text
+        const token = requestToken
+        void copyText(resultText)
+          .then(() => {
+            if (token === requestToken && cardState?.kind === "result" && cardState.text === resultText)
+              copied.val = true
+          })
+          .catch(() => {
+            if (token === requestToken) cardBody?.append(Status({ tone: "danger" }, "复制失败，请重试"))
+          })
+      }
+    },
+    () => (copied.val ? "已复制" : "复制")
+  )
+  copyFooter = Row({ style: { justifyContent: "flex-end" } }, copyButton)
+  card = Surface(
+    {
+      onmousedown: preserveSelection,
+      style: {
+        position: "fixed",
+        display: "none",
+        width: 320,
+        maxWidth: "calc(100vw - 16px)",
+        borderRadius: 12,
+        boxShadow: theme.shadow,
+        overflow: "hidden"
+      }
+    },
+    PanelHeader({ title: "AI 翻译", onclose: closeCard }),
+    cardBody,
+    copyFooter
+  )
+  const content = Column({}, bubble, card)
+  const view = mountContentUI("chrome-ninja-translate", "data-translate-ui", {
+    element: content,
+    dispose: uiScope.dispose
   })
-  bubble.addEventListener("click", () => void startTranslate())
-  shadow.appendChild(bubble)
+  host = view.element
+  disposeUI = view.dispose
 
-  card = document.createElement("div")
-  card.className = "cn-t-card"
-  card.addEventListener("mousedown", (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-  })
-  shadow.appendChild(card)
-
-  document.addEventListener("mouseup", syncSelection, true)
-  document.addEventListener("keyup", syncSelection, true)
-  document.addEventListener("mousedown", closeCard, true)
+  document.addEventListener("mouseup", onSelectionEvent, true)
+  document.addEventListener("keyup", onSelectionEvent, true)
+  document.addEventListener("mousedown", onOutsideDown, true)
   document.addEventListener("selectionchange", onSelectionChange, true)
   window.addEventListener("scroll", onScroll, true)
   attached = true
@@ -94,20 +120,35 @@ function attach() {
 
 function detach() {
   if (!attached) return
-  document.removeEventListener("mouseup", syncSelection, true)
-  document.removeEventListener("keyup", syncSelection, true)
-  document.removeEventListener("mousedown", closeCard, true)
+  document.removeEventListener("mouseup", onSelectionEvent, true)
+  document.removeEventListener("keyup", onSelectionEvent, true)
+  document.removeEventListener("mousedown", onOutsideDown, true)
   document.removeEventListener("selectionchange", onSelectionChange, true)
   window.removeEventListener("scroll", onScroll, true)
-  host?.remove()
+  requestToken++
+  disposeUI?.()
+  disposeUI = null
+  uiScope = null
   host = null
-  shadow = null
+  cardBody = null
+  copyButton = null
+  copyFooter = null
+  cancelSpinner?.()
+  cancelSpinner = null
   bubble = null
   card = null
   currentRange = null
   currentText = ""
   cardState = null
   attached = false
+}
+
+function onSelectionEvent(event: Event) {
+  if (!isContentUIEvent(event)) syncSelection()
+}
+
+function onOutsideDown(event: Event) {
+  if (!host || !event.composedPath().includes(host)) closeCard()
 }
 
 function syncSelection() {
@@ -135,6 +176,8 @@ function onSelectionChange() {
 }
 
 function hideAll() {
+  cancelSpinner?.()
+  requestToken++
   currentRange = null
   currentText = ""
   cardState = null
@@ -143,6 +186,8 @@ function hideAll() {
 }
 
 function closeCard() {
+  cancelSpinner?.()
+  requestToken++
   cardState = null
   if (card) card.style.display = "none"
 }
@@ -190,6 +235,7 @@ function positionCard() {
 async function startTranslate() {
   if (!currentRange || !currentText) return
   const token = ++requestToken
+  copied.val = false
   cardState = { kind: "loading" }
   renderCard()
   positionCard()
@@ -202,7 +248,7 @@ async function startTranslate() {
   } catch {
     response = undefined
   }
-  if (token !== requestToken) return
+  if (token !== requestToken || !attached) return
   if (!response) {
     cardState = { kind: "error", message: "扩展上下文已失效，请刷新页面" }
   } else if (response.ok) {
@@ -215,69 +261,48 @@ async function startTranslate() {
 }
 
 function renderCard() {
-  if (!card || !cardState) return
-  card.replaceChildren()
-
-  const head = document.createElement("div")
-  head.className = "cn-t-card-head"
-  const title = document.createElement("span")
-  title.className = "cn-t-card-title"
-  title.textContent = "AI 翻译"
-  const close = document.createElement("button")
-  close.className = "cn-t-card-close"
-  close.type = "button"
-  close.textContent = "×"
-  close.setAttribute("aria-label", "关闭翻译结果")
-  close.addEventListener("click", closeCard)
-  head.append(title, close)
-  card.append(head)
-
-  const body = document.createElement("div")
-  body.className = "cn-t-card-body"
+  if (!cardBody || !copyFooter || !cardState) return
+  cancelSpinner?.()
+  cancelSpinner = null
+  cardBody.replaceChildren()
+  copyFooter.style.display = cardState.kind === "result" ? "flex" : "none"
   if (cardState.kind === "loading") {
-    const loading = document.createElement("div")
-    loading.className = "cn-t-card-loading"
-    const spinner = document.createElement("span")
-    spinner.className = "cn-t-spinner"
-    loading.append(spinner)
-    loading.append(document.createTextNode("翻译中…"))
-    body.append(loading)
-  } else if (cardState.kind === "error") {
-    const error = document.createElement("div")
-    error.className = "cn-t-card-error"
-    error.textContent = cardState.message
-    body.append(error)
-  } else {
-    const text = document.createElement("div")
-    text.className = "cn-t-card-text"
-    text.textContent = cardState.text
-    body.append(text)
-    if (cardState.truncated) {
-      const note = document.createElement("div")
-      note.className = "cn-t-card-note"
-      note.textContent = `已截取前 ${TRANSLATE_MAX_LENGTH} 字`
-      body.append(note)
-    }
-  }
-  card.append(body)
-
-  if (cardState.kind === "result") {
-    const foot = document.createElement("div")
-    foot.className = "cn-t-card-foot"
-    const copy = document.createElement("button")
-    copy.className = "cn-t-card-copy"
-    copy.type = "button"
-    copy.textContent = cardState.copied ? "已复制" : "复制"
-    const resultText = cardState.text
-    copy.addEventListener("click", () => {
-      void copyText(resultText).then(() => {
-        if (cardState?.kind !== "result" || cardState.text !== resultText) return
-        cardState = { ...cardState, copied: true }
-        renderCard()
-      })
+    const spinner = Text({
+      "aria-hidden": "true",
+      style: {
+        display: "inline-block",
+        width: 14,
+        height: 14,
+        border: `2px solid ${theme.colors.border}`,
+        borderTopColor: theme.colors.primary,
+        borderRadius: "50%"
+      }
     })
-    foot.append(copy)
-    card.append(foot)
+    const animation = spinner.animate?.([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }], {
+      duration: 800,
+      iterations: Infinity
+    })
+    if (animation) cancelSpinner = () => animation.cancel()
+    cardBody.append(Row({}, spinner, Status({}, "翻译中…")))
+  } else if (cardState.kind === "error") {
+    cardBody.append(Status({ tone: "danger" }, cardState.message))
+  } else {
+    cardBody.append(
+      Text(
+        {
+          style: {
+            display: "block",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 320,
+            overflowY: "auto",
+            lineHeight: 1.6
+          }
+        },
+        cardState.text
+      )
+    )
+    if (cardState.truncated) cardBody.append(Status({}, `已截取前 ${TRANSLATE_MAX_LENGTH} 字`))
   }
 }
 
@@ -310,3 +335,7 @@ const main = () => {
   })
 }
 main()
+
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted) detach()
+})

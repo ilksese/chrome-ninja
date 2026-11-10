@@ -156,7 +156,7 @@ describe("video sniffer content", () => {
     readOptions({ options: { videoSniffer: { enabled: true } } })
     flushLayout()
     const host = overlays()[0]
-    expect(getComputedStyle(host).display).toBe("block")
+    expect(getComputedStyle(host).display).toBe("flex")
 
     rect = new DOMRect(100, 200, 640, 360)
     scroller.dispatchEvent(new Event("scroll"))
@@ -166,7 +166,7 @@ describe("video sniffer content", () => {
     rect = new DOMRect(100, 400, 640, 360)
     scroller.dispatchEvent(new Event("scroll"))
     flushLayout()
-    expect(getComputedStyle(host).display).toBe("block")
+    expect(getComputedStyle(host).display).toBe("flex")
     scroller.remove()
   })
 
@@ -218,7 +218,7 @@ describe("video sniffer content", () => {
     container.style.overflowX = "visible"
     window.dispatchEvent(new Event("resize"))
     flushLayout()
-    expect(getComputedStyle(overlays()[0]).display).toBe("block")
+    expect(getComputedStyle(overlays()[0]).display).toBe("flex")
   })
 
   it("assigns independent anchors and cleans them up when videos are removed", async () => {
@@ -255,12 +255,13 @@ describe("video sniffer content", () => {
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "report" }))
   })
 
-  it("hides offscreen buttons despite the host display override and restores them on return", async () => {
+  it("preserves flex layout and button spacing when restoring offscreen overlays", async () => {
     await import("../src/video-sniffer/content")
     readOptions({ options: { videoSniffer: { enabled: true } } })
     flushLayout()
     const host = overlays()[0]
-    expect(getComputedStyle(host).display).toBe("block")
+    expect(getComputedStyle(host).display).toBe("flex")
+    expect(getComputedStyle(host).gap).toBe("4px")
     rect = new DOMRect(100, -500, 640, 360)
     document.dispatchEvent(new Event("scroll"))
     flushLayout()
@@ -268,7 +269,8 @@ describe("video sniffer content", () => {
     rect = new DOMRect(100, 100, 640, 360)
     document.dispatchEvent(new Event("scroll"))
     flushLayout()
-    expect(getComputedStyle(host).display).toBe("block")
+    expect(getComputedStyle(host).display).toBe("flex")
+    expect(getComputedStyle(host).gap).toBe("4px")
   })
 
   it("removes buttons and pending work immediately when disabled or settings are deleted", async () => {

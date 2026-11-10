@@ -1,4 +1,4 @@
-import { isShadowPanelEvent } from "@/content-script/shadow-panel"
+import { isContentUIEvent } from "@/content-ui/lifecycle"
 import type { RecorderLocator } from "./types"
 import type { CapturedEvent } from "./messages"
 import { PANEL_HOST_SELECTOR } from "./messages"
@@ -115,7 +115,7 @@ function closestClickable(el: Element | null): Element | null {
 }
 
 function getClickTarget(ev: MouseEvent): Element | null {
-  if (isShadowPanelEvent(ev)) return null
+  if (isContentUIEvent(ev)) return null
   for (const node of ev.composedPath()) {
     if (!(node instanceof Element)) continue
     if (node.closest(PANEL_HOST_SELECTOR)) return null
@@ -161,7 +161,7 @@ export function startCapture(handler: CaptureHandler): () => void {
   }
 
   const onInput = (ev: Event) => {
-    if (isShadowPanelEvent(ev)) return
+    if (isContentUIEvent(ev)) return
     safeEmit(() => {
       const target = ev.target as Element | null
       if (!target) return
@@ -182,7 +182,7 @@ export function startCapture(handler: CaptureHandler): () => void {
   }
 
   const onScroll = (ev: Event) => {
-    if (isShadowPanelEvent(ev)) return
+    if (isContentUIEvent(ev)) return
     if (scrollTimer) clearTimeout(scrollTimer)
     scrollTimer = setTimeout(() => {
       safeEmit(() => {

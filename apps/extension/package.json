@@ -28,7 +28,8 @@
     "react-router": "6.28.0",
     "react-router-dom": "6.28.0",
     "tailwind-merge": "3.6.0",
-    "valibot": "1.4.2"
+    "valibot": "1.4.2",
+    "vanjs-core": "1.6.2"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.28",
