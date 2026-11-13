@@ -4,9 +4,15 @@
 
 - pnpm workspace: apps live in `apps/*`, shared packages live in `packages/*`.
 - Root `pnpm dev`, `pnpm build`, and `pnpm preview` target only `@chrome-ninja/extension`; run web commands with `pnpm --filter @chrome-ninja/web ...`.
-- Extension UI uses Preact + `preact/compat` + `@preact/preset-vite`; Base UI, `react-router-dom`, and `react-hook-form` work through compat.
+- Extension popup and options pages use Preact + `preact/compat` + `@preact/preset-vite`; Base UI, `react-router-dom`, and `react-hook-form` work through compat.
+- Content UI uses VanJS + native inline styles; follow `apps/extension/AGENTS.md` when adding or changing UI injected into webpages.
 - Shared packages are consumed as TypeScript source through `exports`; they do not have build scripts.
 - Do not read `.env*` files.
+
+## Browser Compatibility
+
+- Target only the latest stable Chrome release, following new stable releases rather than pinning a version.
+- Use web platform and extension APIs supported by that release directly; compatibility fallbacks and polyfills for older Chrome versions or other browsers are out of scope.
 
 ## Commands
 
@@ -32,6 +38,12 @@
 - ESLint is flat config in `eslint.config.js`; it ignores only `dist`.
 - Root `pnpm style` formats only `apps/**/*.{ts,tsx}` and `packages/**/*.{ts,tsx}`.
 - Prefer existing aliases inside apps: extension has `@`, `@assets`, `@components`, `@hooks`, `@store`; web has only `@`.
+
+## Documentation Sync
+
+- Whenever the codebase changes, immediately trace and update all affected documentation that describes or references the changed code, including `AGENTS.md`, README files, and linked documents. Complete these updates in the same change before reporting the work done.
+- Describe the latest implemented codebase in the present tense. Replace or remove stale descriptions, paths, and references instead of appending correction notes.
+- Documentation must not retain or introduce obsolete logic, migration narratives, or intermediate implementation states. Keep descriptions consistent across documents and verify referenced paths and symbols against the current code.
 
 ## Agent skills
 
