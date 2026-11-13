@@ -49,11 +49,11 @@
 
 ### Issue tracker
 
-需求、规格和任务使用 `.scratch/` 下的本地 Markdown；读写任务前先读 `docs/agents/issue-tracker.md`。
+需求、规格和任务使用 `ilksese/chrome-ninja` 的 GitHub Issues；读写任务前先读 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
-分诊使用五个默认角色；设置或解释分诊状态前先读 `docs/agents/triage-labels.md`。
+分诊使用五个默认标签；设置或解释分诊状态前先读 `docs/agents/triage-labels.md`。
 
 ### Domain docs
 
