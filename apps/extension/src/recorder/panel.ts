@@ -1,9 +1,15 @@
-import van from "vanjs-core"
-import { Button, Column, Input, PanelHeader, Row, Status, Surface, Text } from "@/content-ui/components"
-import { createScope, type View } from "@/content-ui/lifecycle"
-import { theme } from "@/content-ui/theme"
+import type { View } from "@/content-ui/lifecycle"
+import type { PanelLayout } from "@/content-ui/panel-geometry"
 import type { RecorderCommand, RecorderViewState } from "./messages"
 import type { RecorderHistoryItem } from "./types"
+import van from "vanjs-core"
+import { Button, Column, Input, PanelHeader, Row, Status, Surface, Text } from "@/content-ui/components"
+import { createScope } from "@/content-ui/lifecycle"
+import { bindPanelDrag, PANEL_MARGIN, PANEL_MIN_SIZE, trackPanelLayout } from "@/content-ui/panel-geometry"
+import { theme } from "@/content-ui/theme"
+
+const MARGIN = PANEL_MARGIN
+const DEFAULT_WIDTH = 300
 
 const STATUS_TEXT: Record<string, string> = { recording: "录制中", paused: "已暂停", replaying: "复现中" }
 
@@ -11,13 +17,16 @@ function sendCommand(command: RecorderCommand) {
   void chrome.runtime.sendMessage({ target: "recorder", type: "COMMAND", command })
 }
 
-export default function Panel(): View {
+export default function Panel(layout?: PanelLayout | null): View {
   const scope = createScope()
   const state = van.state<RecorderViewState>({ enabled: false, task: null, history: [] })
   const active = () => state.val.task !== null
   const task = () => state.val.task
   const historyList = Column()
   const items = new Map<string, { element: HTMLElement; update: (item: RecorderHistoryItem) => void }>()
+  const pos = layout
+    ? { x: layout.left, y: layout.top }
+    : { x: Math.max(MARGIN, window.innerWidth - DEFAULT_WIDTH - MARGIN), y: MARGIN }
 
   const historyItem = (initial: RecorderHistoryItem) => {
     const item = van.state(initial)
@@ -160,14 +169,25 @@ export default function Panel(): View {
     )
   )
 
+  const header = PanelHeader({
+    title: "步骤记录器",
+    label: "recorder",
+    style: { cursor: "move", touchAction: "none", userSelect: "none", flexShrink: 0 }
+  })
+
   const element = Surface(
     {
       style: {
         position: "fixed",
-        right: 16,
-        top: 16,
-        width: 300,
-        maxHeight: "calc(100vh - 32px)",
+        left: pos.x,
+        top: pos.y,
+        width: layout ? layout.width : DEFAULT_WIDTH,
+        ...(layout ? { height: layout.height } : {}),
+        maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
+        minWidth: `min(${PANEL_MIN_SIZE.recorder.width}px, calc(100vw - ${MARGIN * 2}px))`,
+        minHeight: `min(${PANEL_MIN_SIZE.recorder.height}px, calc(100vh - ${MARGIN * 2}px))`,
+        maxWidth: `calc(100vw - ${MARGIN * 2}px)`,
+        resize: "both",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -175,7 +195,7 @@ export default function Panel(): View {
         boxShadow: theme.shadow
       }
     },
-    PanelHeader({ title: "步骤记录器", label: "recorder" }),
+    header,
     Column(
       { style: { minHeight: 0, overflowY: "auto", padding: 16, flex: 1 } },
       taskControls,
@@ -213,6 +233,8 @@ export default function Panel(): View {
   }
   chrome.runtime.onMessage.addListener(onMessage)
   scope.add(() => chrome.runtime.onMessage.removeListener(onMessage))
+  scope.add(bindPanelDrag(element, header, "recorder"))
+  scope.add(trackPanelLayout(element, "recorder"))
   void chrome.runtime.sendMessage({ target: "recorder", type: "SUBSCRIBE" })
   return { element, dispose: scope.dispose }
 }

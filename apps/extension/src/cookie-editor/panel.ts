@@ -1,8 +1,17 @@
+import type { View } from "../content-ui/lifecycle"
+import type { PanelLayout } from "../content-ui/panel-geometry"
+import type { Cookie, CookieCommand, CookieEntry, CookieNotice, CookieOriginal, CookieResponse } from "./types"
 import van from "vanjs-core"
 import { Button, Collapsible, Column, Input, PanelHeader, Row, Status, Surface, Text } from "../content-ui/components"
-import { createScope, type View } from "../content-ui/lifecycle"
+import { createScope } from "../content-ui/lifecycle"
+import {
+  bindPanelDrag,
+  fitPanelLayout,
+  PANEL_MARGIN,
+  PANEL_MIN_SIZE,
+  trackPanelLayout
+} from "../content-ui/panel-geometry"
 import { css, theme } from "../content-ui/theme"
-import type { Cookie, CookieEntry, CookieNotice, CookieOriginal, CookieCommand, CookieResponse } from "./types"
 
 const message = async (command: CookieCommand): Promise<CookieResponse> => {
   const response: CookieResponse | undefined = await chrome.runtime.sendMessage({ target: "cookie-editor", ...command })
@@ -116,7 +125,7 @@ function cookieForm(cookie: Cookie, save: (cookie: Cookie) => Promise<void>, can
   return { element: form, saveButton }
 }
 
-export function CookiePanel(onclose: () => void): View & { focus: () => void } {
+export function CookiePanel(onclose: () => void, layout?: PanelLayout | null): View & { focus: () => void } {
   const scope = createScope()
   let hostname = ""
   let storeId = ""
@@ -338,6 +347,17 @@ export function CookiePanel(onclose: () => void): View & { focus: () => void } {
         )
     }
   }
+  const initialLayout =
+    layout ??
+    fitPanelLayout(
+      {
+        left: Math.max(16, (window.innerWidth - 720) / 2),
+        top: Math.max(24, (window.innerHeight - 800) / 2),
+        width: Math.min(720, window.innerWidth - 32),
+        height: Math.min(800, window.innerHeight - 48)
+      },
+      "cookie-editor"
+    )
   const header = PanelHeader({
     title: "Cookie 编辑器",
     onclose,
@@ -350,14 +370,14 @@ export function CookiePanel(onclose: () => void): View & { focus: () => void } {
       tabindex: -1,
       style: {
         position: "fixed",
-        top: "max(24px, calc((100vh - 800px) / 2))",
-        left: "max(16px, calc((100vw - 720px) / 2))",
-        width: "min(720px, calc(100vw - 32px))",
-        height: "min(800px, calc(100vh - 48px))",
-        minWidth: "min(320px, calc(100vw - 32px))",
-        minHeight: "min(260px, calc(100vh - 48px))",
-        maxWidth: "calc(100vw - 16px)",
-        maxHeight: "calc(100vh - 16px)",
+        top: initialLayout.top,
+        left: initialLayout.left,
+        width: initialLayout.width,
+        height: initialLayout.height,
+        minWidth: `min(${PANEL_MIN_SIZE["cookie-editor"].width}px, calc(100vw - ${PANEL_MARGIN * 2}px))`,
+        minHeight: `min(${PANEL_MIN_SIZE["cookie-editor"].height}px, calc(100vh - ${PANEL_MARGIN * 2}px))`,
+        maxWidth: `calc(100vw - ${PANEL_MARGIN * 2}px)`,
+        maxHeight: `calc(100vh - ${PANEL_MARGIN * 2}px)`,
         display: "flex",
         flexDirection: "column",
         resize: "both",
@@ -378,30 +398,8 @@ export function CookiePanel(onclose: () => void): View & { focus: () => void } {
       )
     )
   )
-  let drag: { x: number; y: number; left: number; top: number } | undefined
-  const down = (event: MouseEvent) => {
-    if (event.button !== 0 || (event.target as Element).closest("button")) return
-    const rect = element.getBoundingClientRect()
-    drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top }
-    event.preventDefault()
-  }
-  const move = (event: MouseEvent) => {
-    if (!drag) return
-    element.style.left = `${Math.max(0, Math.min(window.innerWidth - element.offsetWidth, drag.left + event.clientX - drag.x))}px`
-    element.style.top = `${Math.max(0, Math.min(window.innerHeight - element.offsetHeight, drag.top + event.clientY - drag.y))}px`
-    element.style.right = "auto"
-  }
-  const up = () => {
-    drag = undefined
-  }
-  header.addEventListener("mousedown", down)
-  window.addEventListener("mousemove", move)
-  window.addEventListener("mouseup", up)
-  scope.add(() => {
-    header.removeEventListener("mousedown", down)
-    window.removeEventListener("mousemove", move)
-    window.removeEventListener("mouseup", up)
-  })
+  scope.add(bindPanelDrag(element, header, "cookie-editor"))
+  scope.add(trackPanelLayout(element, "cookie-editor"))
   const receive = (noticeMessage: CookieNotice) => {
     if (noticeMessage.target !== "cookie-editor-ui" || noticeMessage.type !== "changed") return
     if (noticeMessage.error) notice.textContent = noticeMessage.error

@@ -1,3 +1,15 @@
+import type { View } from "@/content-ui/lifecycle"
+import type { PanelLayout } from "@/content-ui/panel-geometry"
+import type { Style } from "@/content-ui/theme"
+import type {
+  NetmonBody,
+  NetmonCommand,
+  NetmonFormEntry,
+  NetmonHeader,
+  NetmonRecord,
+  NetmonRequestBody,
+  NetmonTabState
+} from "./types"
 import van from "vanjs-core"
 import {
   Button,
@@ -12,22 +24,13 @@ import {
   Surface,
   Text
 } from "@/content-ui/components"
-import { createScope, type View } from "@/content-ui/lifecycle"
-import { theme, type Style } from "@/content-ui/theme"
-import type {
-  NetmonBody,
-  NetmonCommand,
-  NetmonFormEntry,
-  NetmonHeader,
-  NetmonRecord,
-  NetmonRequestBody,
-  NetmonTabState
-} from "./types"
-import { RECORD_LIMIT } from "./types"
+import { createScope } from "@/content-ui/lifecycle"
+import { bindPanelDrag, PANEL_MARGIN, PANEL_MIN_SIZE, trackPanelLayout } from "@/content-ui/panel-geometry"
+import { theme } from "@/content-ui/theme"
 import { curlCopyReason, queryParameters, requestCopyReason, toCurl, toFetch } from "./requests"
+import { RECORD_LIMIT } from "./types"
 
 type SortDir = "asc" | "desc"
-const MARGIN = 16
 const colors = theme.colors
 const smallButton: Style = { fontSize: 11, padding: "3px 8px" }
 const recordKey = (record: NetmonRecord) => `${record.frameId}:${record.id}`
@@ -424,18 +427,21 @@ function SortButton(dir: () => SortDir, toggle: () => void) {
   )
 }
 
-export default function Panel(initial: NetmonTabState): View & { update: (state: NetmonTabState) => void } {
+export default function Panel(
+  initial: NetmonTabState,
+  layout?: PanelLayout | null
+): View & { update: (state: NetmonTabState) => void } {
   const scope = createScope()
   const state = van.state(initial)
   const ruleInput = van.state("")
   const sortDir = van.state<SortDir>("asc")
-  let pos = { x: window.innerWidth - 300 - MARGIN, y: MARGIN }
+  const pos = layout
+    ? { x: layout.left, y: layout.top }
+    : { x: window.innerWidth - 300 - PANEL_MARGIN, y: PANEL_MARGIN }
   const list = Column({ style: { minHeight: 0, flex: 1, overflowY: "auto", padding: 12 } })
   const rules = Row({ style: { flexWrap: "wrap", gap: 4 } })
   const recordViews = new Map<string, View>()
   const groupViews = new Map<string, { element: HTMLElement; update: (records: NetmonRecord[]) => void }>()
-  let stopDrag = () => {}
-  scope.add(() => stopDrag())
   scope.add(() => recordViews.forEach((view) => view.dispose()))
 
   const recordNodes = (records: NetmonRecord[], dir: SortDir) =>
@@ -590,26 +596,13 @@ export default function Panel(initial: NetmonTabState): View & { update: (state:
     refreshRecords()
   }
 
-  const onDragStart = (event: MouseEvent) => {
-    if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button"))) return
-    stopDrag()
-    const dx = event.clientX - pos.x,
-      dy = event.clientY - pos.y
-    const onMove = (next: MouseEvent) => {
-      pos = {
-        x: Math.min(Math.max(MARGIN, next.clientX - dx), Math.max(MARGIN, window.innerWidth - 300 - MARGIN)),
-        y: Math.min(Math.max(MARGIN, next.clientY - dy), Math.max(MARGIN, window.innerHeight - 40 - MARGIN))
-      }
-      element.style.left = `${pos.x}px`
-      element.style.top = `${pos.y}px`
-    }
-    stopDrag = () => {
-      window.removeEventListener("mousemove", onMove)
-      window.removeEventListener("mouseup", stopDrag)
-    }
-    window.addEventListener("mousemove", onMove)
-    window.addEventListener("mouseup", stopDrag)
-  }
+  const header = PanelHeader({
+    title: "网络监视器",
+    label: "network",
+    onclose: () => sendCommand({ name: "stop" }),
+    class: "netmon-drag-header",
+    style: { cursor: "move", touchAction: "none", userSelect: "none" }
+  })
 
   const addRule = () => {
     const pattern = ruleInput.val.trim()
@@ -636,11 +629,12 @@ export default function Panel(initial: NetmonTabState): View & { update: (state:
         position: "fixed",
         top: pos.y,
         left: pos.x,
-        width: 300,
-        maxHeight: "calc(100vh - 32px)",
-        minWidth: 260,
-        minHeight: 200,
-        maxWidth: "calc(100vw - 32px)",
+        width: layout ? layout.width : 300,
+        ...(layout ? { height: layout.height } : {}),
+        maxHeight: `calc(100vh - ${PANEL_MARGIN * 2}px)`,
+        minWidth: `min(${PANEL_MIN_SIZE.netmon.width}px, calc(100vw - ${PANEL_MARGIN * 2}px))`,
+        minHeight: `min(${PANEL_MIN_SIZE.netmon.height}px, calc(100vh - ${PANEL_MARGIN * 2}px))`,
+        maxWidth: `calc(100vw - ${PANEL_MARGIN * 2}px)`,
         resize: "both",
         display: "flex",
         flexDirection: "column",
@@ -649,14 +643,7 @@ export default function Panel(initial: NetmonTabState): View & { update: (state:
         boxShadow: theme.shadow
       }
     },
-    PanelHeader({
-      title: "网络监视器",
-      label: "network",
-      onclose: () => sendCommand({ name: "stop" }),
-      class: "netmon-drag-header",
-      style: { cursor: "move", touchAction: "none", userSelect: "none" },
-      onmousedown: onDragStart
-    }),
+    header,
     Column(
       { style: { borderBottom: `1px solid ${colors.border}`, padding: 12 } },
       Row({}, input, Button({ variant: "primary", style: smallButton, onclick: addRule }, "添加")),
@@ -680,6 +667,8 @@ export default function Panel(initial: NetmonTabState): View & { update: (state:
     ),
     list
   )
+  scope.add(bindPanelDrag(element, header, "netmon"))
+  scope.add(trackPanelLayout(element, "netmon"))
   update(initial)
   return { element, update, dispose: scope.dispose }
 }

@@ -1,4 +1,3 @@
-import { mountContentUI } from "@/content-ui/lifecycle"
 import type {
   NetmonError,
   NetmonFormEntry,
@@ -7,8 +6,10 @@ import type {
   NetmonRequestBody,
   NetmonTabState
 } from "./types"
-import { NETMON_POST_SOURCE, PANEL_HOST_ATTR } from "./types"
+import { mountContentUI } from "@/content-ui/lifecycle"
+import { loadPanelLayout } from "@/content-ui/panel-geometry"
 import Panel from "./Panel"
+import { NETMON_POST_SOURCE, PANEL_HOST_ATTR } from "./types"
 
 const HOOK_URL = "src/network-monitor/hook.js"
 
@@ -17,6 +18,8 @@ const isTopFrame = window === window.top
 let enabled = false
 let panel: ReturnType<typeof mountContentUI> | null = null
 let panelView: ReturnType<typeof Panel> | null = null
+let mounting: Promise<void> | null = null
+let latestState: NetmonTabState | null = null
 let hookInjected = false
 
 function injectHook(): void {
@@ -33,11 +36,28 @@ function mountPanel(state: NetmonTabState) {
     panelView.update(state)
     return
   }
-  panelView = Panel(state)
-  panel = mountContentUI("chrome-ninja-netmon", PANEL_HOST_ATTR, panelView)
+  if (mounting) return
+  mounting = loadPanelLayout("netmon")
+    .then((layout) => {
+      // 等待布局时仍会收到 STATE，首次挂载必须采用最新快照。
+      if (!enabled || panelView || !latestState) return
+      const view = Panel(latestState, layout)
+      try {
+        panel = mountContentUI("chrome-ninja-netmon", PANEL_HOST_ATTR, view)
+        panelView = view
+      } catch (error) {
+        view.dispose()
+        throw error
+      }
+    })
+    .catch((error) => console.warn("网络监视器面板挂载失败", error))
+    .finally(() => {
+      mounting = null
+    })
 }
 
 function applyState(state: NetmonTabState) {
+  latestState = state
   setEnabled(Boolean(state.enabled))
   if (state.enabled) {
     mountPanel(state)
