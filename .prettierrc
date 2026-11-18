@@ -6,7 +6,15 @@
   "trailingComma": "none",
   "bracketSpacing": true,
   "bracketSameLine": true,
-  "tailwindConfig": "./apps/extension/tailwind.config.js",
+  "tailwindStylesheet": "./apps/extension/src/index.css",
+  "overrides": [
+    {
+      "files": "apps/web/**",
+      "options": {
+        "tailwindStylesheet": "./apps/web/src/index.css"
+      }
+    }
+  ],
   "tailwindFunctions": ["clsx", "cn"],
   "tailwindAttributes": ["className", "wrapClassName", "classList"],
   "plugins": ["@ianvs/prettier-plugin-sort-imports", "prettier-plugin-tailwindcss"],
