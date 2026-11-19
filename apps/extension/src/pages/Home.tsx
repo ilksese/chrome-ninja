@@ -185,7 +185,6 @@ const Home = ({ layout }: HomeProps) => {
   }
 
   // 首页卡片只读当前标签页的模拟状态：状态由后台内存决定，预设名从列表里反查。
-  // 卡片的打开预设页入口与这里的退出入口互不替代，退出不跳转。
   const refreshSimulation = async () => {
     try {
       const status = (await chrome.runtime.sendMessage({ target: "browser-preset", type: "status" })) as

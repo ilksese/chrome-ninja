@@ -10,7 +10,7 @@ export const DEVICE_SCALE_MAX = 4
 export type PresetField = "name" | "userAgent" | "width" | "height" | "deviceScaleFactor" | "mobile"
 export type PresetFieldErrors = Partial<Record<PresetField, string>>
 
-/** 按字段顺序返回第一条错误，供后台协议与预设页共用。 */
+/** 校验报错时的字段优先级顺序。 */
 export const PRESET_FIELD_ORDER: PresetField[] = ["name", "userAgent", "width", "height", "deviceScaleFactor", "mobile"]
 
 export const normalizePresetName = (name: string) => name.trim().toLowerCase()
@@ -68,7 +68,7 @@ export function validatePreset(
   }
 }
 
-/** 返回第一条错误文案，没有错误时返回 undefined。 */
+/** 按 `PRESET_FIELD_ORDER` 返回第一条错误，没有错误时返回 undefined。 */
 export function firstPresetError(errors: PresetFieldErrors) {
   return PRESET_FIELD_ORDER.map((field) => errors[field]).find(Boolean)
 }

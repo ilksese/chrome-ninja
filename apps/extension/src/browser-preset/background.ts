@@ -12,7 +12,6 @@ import { getUaIdentity, mobileConflictOf } from "./identity"
 import { firstPresetError, validatePreset } from "./validation"
 import { resumeUserAgentRule, suspendUserAgentRule } from "@/user-agent"
 
-/** 正在模拟的标签页；只活在后台内存里，扩展重启即清空。 */
 const appliedByTab = new Map<number, AppliedPreset>()
 
 /**
@@ -39,7 +38,6 @@ const GROUP_TITLE_PREFIX = "[ninja] "
 
 const groupTitleOf = (preset: BrowserPreset) => `${GROUP_TITLE_PREFIX}${preset.name}`
 
-/** 建组、命名并记录 id；标签页同时离开原分组。 */
 async function createGroupFor(preset: BrowserPreset, tabId: number) {
   const groupId = await chrome.tabs.group({ tabIds: [tabId], createProperties: {} })
   ownedGroupIds.add(groupId)
@@ -60,7 +58,6 @@ async function findOwnGroup(preset: BrowserPreset) {
   return undefined
 }
 
-/** 复用同预设的扩展分组；分组已消失或加入失败时退回新建。 */
 async function joinPresetGroup(preset: BrowserPreset, tabId: number) {
   // 先在扩展分组之间腾挪：chrome.tabs.group 会自动把标签页移出原分组，无需单独 ungroup。
   const existing = await findOwnGroup(preset)
@@ -75,14 +72,12 @@ async function joinPresetGroup(preset: BrowserPreset, tabId: number) {
   return await createGroupFor(preset, tabId)
 }
 
-/** 应用与状态查询只接受扩展页面或顶层网页发起，目标标签页随后从发起方推导。 */
 function assertSender(sender: chrome.runtime.MessageSender) {
   if (sender.id !== chrome.runtime.id) throw new Error("不受信任的扩展消息")
   if (sender.tab && sender.frameId !== 0) throw new Error("仅支持顶层网页")
   if (!sender.tab && !sender.url?.startsWith(chrome.runtime.getURL(""))) throw new Error("请求必须来自扩展页面")
 }
 
-/** 网页取自身标签页；扩展页面取当前窗口的活动标签页。 */
 async function targetTabId(sender: chrome.runtime.MessageSender) {
   assertSender(sender)
   if (sender.tab?.id !== undefined) return sender.tab.id
@@ -105,25 +100,20 @@ async function unavailableReasonFor(tabId: number) {
   return ""
 }
 
-/** 标签页当前是否在别人（用户或其他扩展）的分组里；扩展自建分组不算。 */
 async function inForeignGroup(tabId: number) {
   const tab = await chrome.tabs.get(tabId)
   const groupId = tab.groupId ?? -1
   return groupId >= 0 && !ownedGroupIds.has(groupId)
 }
 
-/**
- * 只清内存：归还让位、清空会话映射，不触碰浏览器。
- * 标签页已经消失时浏览器自己会清掉覆盖，这两步是唯一还有意义的部分。
- */
+/** 只清内存；标签页已消失时浏览器自己会清掉覆盖。 */
 async function forgetTab(tabId: number) {
   if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
   appliedByTab.delete(tabId)
 }
 
 /**
- * 退出模拟的唯一收尾路径：归还全局改写让位、分离调试会话（Chromium 随分离清除全部模拟覆盖）、
- * 离开模拟分组，再重新加载，最后清空内存映射。标题相同的用户自建分组不在 `ownedGroupIds` 内，不会被认领。
+ * 退出模拟的唯一收尾路径：归还让位、分离调试会话、离开模拟分组、重新加载，最后清空内存映射。
  * 用户移出分组触发的退出与预设页/首页发起的退出共用这里。
  */
 async function endSession(tabId: number) {
@@ -140,7 +130,6 @@ async function endSession(tabId: number) {
 async function attributeDetach(source: chrome.debugger.Debuggee, reason: string) {
   const tabId = source.tabId
   if (tabId === undefined || !appliedByTab.has(tabId)) return
-  // 标签页已关闭：映射随标签页失效，静默清理，不留任何提示。
   const tabExists = await chrome.tabs.get(tabId).then(
     () => true,
     () => false
@@ -235,7 +224,7 @@ async function clearUaOverride(tabId: number) {
 }
 
 /**
- * 停止一个预设：逐个走统一的 `endSession`，让分离、离开分组、重新加载与全局规则归还都不被绕过。
+ * 停止一个预设，逐个走统一的 `endSession`。
  * 先快照标签页再退出——`endSession` 会删 `appliedByTab`，边迭代边删会漏掉后面的标签页。
  */
 async function stopPreset(presetId: string) {
@@ -255,7 +244,6 @@ async function savePresets(presets: BrowserPreset[]) {
   await chrome.storage.local.set({ [BROWSER_PRESETS_KEY]: presets })
 }
 
-/** 每个预设当前被多少个标签页使用；「使用中」的唯一判定依据，直接数 `appliedByTab`。 */
 function usageCountOf(presetId: string) {
   let count = 0
   for (const applied of appliedByTab.values()) if (applied.presetId === presetId) count += 1
@@ -281,7 +269,6 @@ function usageOf(presets: BrowserPreset[]): BrowserPresetUsage {
 
 export function registerBrowserPresetBackground() {
   // 用户把标签页移出扩展分组即视为退出模拟；用户自建分组不在 ownedGroupIds 内，不受影响。
-  // `chrome.tabs.group` 会异步发出 groupId 变更，事件可能在换组中途到达：进行中的换组一律忽略。
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.groupId === undefined) return
     if (groupTransitions.has(tabId)) return
@@ -295,8 +282,7 @@ export function registerBrowserPresetBackground() {
     void attributeDetach(source, reason)
   })
 
-  // 分组变空后由 Chrome 自己关闭；这里只负责把 id 从记账里去掉，避免下次应用时再去查一个已消失的分组。
-  // 用户自建分组的 id 从不在 `ownedGroupIds` 内，删除是空操作。
+  // 分组空掉后由 Chrome 自行关闭；这里只把 id 从记账里去掉，用户自建分组的删除是空操作。
   chrome.tabGroups.onRemoved.addListener((group) => {
     ownedGroupIds.delete(group.id)
   })
@@ -317,7 +303,7 @@ export function registerBrowserPresetBackground() {
           const existing =
             message.type === "update" ? presets.find((preset) => preset.id === message.id) : undefined
           if (message.type === "update" && !existing) throw new Error("预设不存在，可能已被删除")
-          // 编辑与重命名走同一条命令，锁定必须在写入前拒绝，不能指望页面藏按钮。
+          // 编辑与重命名走同一条命令，锁定必须在写入前拒绝。
           if (existing) assertPresetUnused(existing.id)
           const { draft, errors } = validatePreset(message.preset, presets, existing?.id)
           const error = firstPresetError(errors)
@@ -325,7 +311,6 @@ export function registerBrowserPresetBackground() {
           // 冲突且未确认时什么都不写：取消保存就是保持现状。
           const conflict = mobileConflictOf(draft.userAgent, draft.viewport.mobile)
           if (conflict && message.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
-          // 新建分配新 id；更新保留原 id，重命名不改稳定标识。
           const preset: BrowserPreset = { id: existing?.id ?? crypto.randomUUID(), ...draft }
           const next = existing
             ? presets.map((item) => (item.id === preset.id ? preset : item))
@@ -348,7 +333,6 @@ export function registerBrowserPresetBackground() {
         if (message.type === "status") {
           const tabId = await targetTabId(sender)
           const notice = notices.get(tabId)
-          // 一次性提示：读走即清，避免每次查状态都重复弹。
           notices.delete(tabId)
           return {
             ok: true,
@@ -370,7 +354,7 @@ export function registerBrowserPresetBackground() {
         }
         if (message.type === "simulate-exit") {
           const tabId = await targetTabId(sender)
-          // 未在模拟时保持现状：没有覆盖可清，重新加载只会丢掉页面当前状态。
+          // 未在模拟时保持现状：重新加载只会丢掉页面当前状态。
           await endSession(tabId)
           return { ok: true, tabId }
         }

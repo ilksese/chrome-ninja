@@ -76,7 +76,6 @@ const fieldClass =
 export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const isOptions = layout === "options"
   const [presets, setPresets] = useState<BrowserPreset[]>([])
-  // 使用数量由后台按内存映射现算；页面只读，不自行推断哪个预设被占用。
   const [usage, setUsage] = useState<BrowserPresetUsage>({})
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<FormState | null>(null)
@@ -90,7 +89,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [applyingId, setApplyingId] = useState("")
   const [stoppingId, setStoppingId] = useState("")
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
-  // 标签页在用户自建分组里：应用前必须由用户确认这场有损的移出。
+  // 标签页在用户自建分组里：移出是有损操作，应用前必须由用户确认。
   const [pendingGroupMove, setPendingGroupMove] = useState<BrowserPreset | null>(null)
   const [conflict, setConflict] = useState<MobileConflict | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -124,15 +123,13 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     void refresh()
   }, [refresh])
 
-  // 应用前先问后台目标标签页能不能模拟，受限页面据此在点击前就禁用。
-  // 同一次应答里带回正在模拟的预设与一次性提示，页面据此显示当前状态与退出模拟入口。
+  // 应用前先问后台目标标签页能不能模拟，受限页面据此在点击前就禁用；应答同时带回模拟状态与一次性提示。
   const refreshStatus = useCallback(async () => {
     try {
       const response = await send({ type: "status" })
       if (!response?.ok) throw new Error(response?.error ?? "无法读取当前标签页")
       setTabReason(response.unavailableReason ?? "")
       setSimulatingId(response.presetId)
-      // 被动终止的一次性提示由后台在读取后清空，这里只负责展示。
       if (response.notice) setNotice(response.notice)
     } catch (err) {
       setTabReason(err instanceof Error ? err.message : "无法读取当前标签页")
@@ -176,7 +173,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   }
 
   const { errors } = form ? validatePreset(toDraft(form), presets, form.id) : { errors: {} }
-  // 用户改过某个字段后立即提示该字段的错误；未触碰的字段不提前报错。
+  // 未触碰的字段不提前报错。
   const visibleErrors = Object.fromEntries(
     Object.entries(errors).filter(([field]) => submitted || touched.includes(field as PresetField))
   ) as PresetFieldErrors
@@ -195,7 +192,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
         ...(confirmConflict ? { confirmConflict: true } : {}),
         preset: toDraft(form)
       })
-      // 冲突时后台未写入任何内容，先交由用户确认；确认后带着标记重发同一份草稿。
+      // 冲突时后台未写入任何内容，确认后带着标记重发同一份草稿。
       if (response?.needsConfirmation) {
         setConflict(response.conflict ?? null)
         return
@@ -249,7 +246,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       if (!response?.ok) throw new Error(response?.error ?? "应用预设失败")
       setPendingGroupMove(null)
       setSimulatingId(preset.id)
-      // 应用改变了使用数量，锁定态与「正在 N 个标签页使用」必须立刻反映出来。
       void refresh()
       setNotice(`已应用「${preset.name}」`)
     } catch (err) {
@@ -259,7 +255,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     }
   }
 
-  // 取消只关闭确认框：后台没有做任何改动，标签页仍留在用户自己的分组里。
+  // 取消只关闭确认框：后台没有做任何改动。
   const cancelGroupMove = () => setPendingGroupMove(null)
 
   // 退出模拟不依赖 tabReason：受限原因只拦应用，退出随时可用。
@@ -272,17 +268,13 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       if (!response?.ok) throw new Error(response?.error ?? "退出模拟失败")
       setSimulatingId(undefined)
       setNotice("已退出模拟")
-      // 退出可能让该预设的使用者归零，解锁状态要在列表上同步刷新。
       void refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "退出模拟失败")
     }
   }
 
-  /**
-   * 停止一个预设：退出所有正在使用它的标签页。
-   * 与单个标签页的退出模拟不同，停止是全局操作，只需一次命令，页面随后按返回结果刷新列表。
-   */
+  /** 停止一个预设：退出所有正在使用它的标签页，一次命令完成全局操作。 */
   const stopPreset = async (preset: BrowserPreset) => {
     setError("")
     setNotice("")
@@ -291,7 +283,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({ type: "stop", id: preset.id })
       if (!response?.ok) throw new Error(response?.error ?? "停止失败")
       applyList(response)
-      // 停止会退出包括当前标签页在内的所有使用者，模拟状态与本地状态一并清空。
       setSimulatingId(undefined)
       setNotice(`已停止「${preset.name}」`)
     } catch (err) {
@@ -534,9 +525,9 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
           ) : (
             <ul className="space-y-2">
               {presets.map((preset) => {
-                // 使用中即锁定：数量来自后台，页面不自行判断；锁定只放开「停止」，其余编辑入口一并禁用。
+                // 使用中即锁定：数量来自后台，页面不自行判断。
                 const inUse = (usage[preset.id] ?? 0) > 0
-                // 窄屏（Popup）下按钮合计宽度会挤扁信息列，因此信息与操作分行；宽屏（Options）保持单行。
+                // 窄屏（Popup）下按钮会挤扁信息列，因此信息与操作分行；宽屏（Options）保持单行。
                 return (
                   <li
                     key={preset.id}
