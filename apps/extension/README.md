@@ -18,6 +18,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 - 网络监视器：捕获页面请求，查看请求与响应详情。
 - 操作录制、翻译和 UA 身份切换。
 - Cookie 编辑器：在网页中查询、新增、修改与持续禁用当前主机的 Cookie。
+- 浏览器预设：保存 User-Agent 与 viewport 组合，供后续对单个标签页应用。
 - 网页内面板（Cookie 编辑器、网络监视器、步骤记录器）可拖动标题栏、拖动右下角调整大小；仅标题栏拖动改变位置或原生缩放改变尺寸后保存布局，普通点击期间的内容增高不保存。各面板使用独立的 `chrome.storage.local` 键 `contentUiPanelLayouts.<panel-key>`，所有站点与标签页共用。恢复与拖动统一保留 8 px 视口边距，拖动的每次移动按面板当前实际尺寸计算边界，各自最小尺寸在小视口下缩小。Cookie 编辑器首次打开的默认布局同样经过边界夹取。
 - 默认配置在 `src/store/options.ts`，类型在 `src/types.ts`。
 
@@ -40,6 +41,19 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 后台在 `src/cookie-editor/background.ts` 处理 `cookie-editor` 命令（`open`、`list`、`save`、`disable`、`enable`），按发送标签页确定权限范围，命令返回明确成功或错误。禁用规则与待处理移除标记保存在 `chrome.storage.local.cookieEditorRules`；持久化成功后才执行禁用移除。过期写入前同时记录本地归属标记与 `chrome.storage.session.cookieEditorPendingRemovals` 会话登记，后台重建只信任两者同时存在的归属，浏览器重启后不沿用上一会话的归属登记。过期写入明确失败或校验发现目标未移除时，撤销内存归属，并分别尝试清理本地与会话记录，已排队事件也不再信任该失败操作；单侧残留不能恢复归属。任一清理失败都会明确报错，禁用规则与最新恢复数据仍保留，存储恢复后可重新载入核实并重试。打开面板的标签页订阅保存在 `chrome.storage.session.cookieEditorSubscribers`，后台休眠唤醒后继续通知。打开入口等待面板挂载确认，面板订阅状态变化并在关闭时释放资源。
 
 相关消息、事件顺序、后台重建、身份隔离与失败行为由 Vitest 验证，面板与入口也有行为测试。真实 Chrome 验收另需已加载扩展和仓库允许的浏览器工具授权，覆盖后台休眠唤醒、浏览器重启、分区 API 与 HttpOnly 往返、注入、原生调整大小及录制流程。
+
+## 浏览器预设
+
+从扩展弹窗或选项页的首页卡片进入 `/browser-presets`，页面由 Popup 与 Options 共用。首次进入说明应用预设需要附加调试权限。
+
+预设保存在 `chrome.storage.local.browserPresets`，与 `options` 分开，浏览器重启后保留；首次安装为空，不内置默认预设。记录包含稳定 `id`、唯一 `name`、沿用 `USER_AGENT_OPTIONS` 的 `userAgent`（`default` 表示不覆盖 UA）与 `viewport`（宽、高、设备像素比、mobile）。
+
+- 名称去首尾空格后非空，长度上限 40，唯一性忽略大小写。
+- 宽高为 200–4000 的整数，设备像素比为 1–4；越界时展示校验提示并拒绝保存。
+- 设备档位按钮只填入视口数值，不作为可保存实体，不进入存储。填入后可继续手动微调。
+- 支持编辑全部字段与重命名；删除前二次确认并展示预设名。
+
+后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令（`list`、`create`、`update`、`delete`），校验规则在 `src/browser-preset/validation.ts`，页面与后台共用同一份。协议与页面行为分别由 `tests/browser-preset-background.test.ts` 与 `tests/browser-presets-page.test.tsx` 验证。
 
 ## 命令
 

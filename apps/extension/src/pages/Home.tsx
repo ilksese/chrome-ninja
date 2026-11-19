@@ -473,6 +473,19 @@ const Home = ({ layout }: HomeProps) => {
             {!isOptions && <NetworkMonitorToggle />}
 
             <button
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
+              type="button"
+              aria-label="浏览器预设"
+              onClick={() => navigate("/browser-presets")}>
+              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">BP</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">浏览器预设</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">为单个标签页切换 User-Agent 与 viewport</span>
+              </span>
+              <span className="text-2xl leading-none text-[#005bd1]">›</span>
+            </button>
+
+            <button
               ref={translateTriggerRef}
               className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
               type="button"
