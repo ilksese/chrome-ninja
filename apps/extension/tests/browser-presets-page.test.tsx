@@ -11,6 +11,8 @@ type Preset = {
 
 let presets: Preset[] = []
 let sendMessage = vi.fn()
+let unavailableReason = ""
+let applyResult: { ok: boolean; error?: string } | undefined
 
 const preset = (patch: Partial<Preset> = {}): Preset => ({
   id: "preset-1",
@@ -34,6 +36,8 @@ const conflictOf = (draft: Omit<Preset, "id">) => {
 
 const reply = (command: { type: string; [key: string]: unknown }) => {
   if (command.type === "list") return { ok: true, presets: structuredClone(presets) }
+  if (command.type === "status") return { ok: true, tabId: 7, unavailableReason }
+  if (command.type === "apply") return applyResult ?? { ok: true }
   if (command.type === "create" || command.type === "update") {
     const draft = command.preset as Omit<Preset, "id">
     const conflict = conflictOf(draft)
@@ -57,6 +61,8 @@ const commands = (type: string) =>
 
 beforeEach(() => {
   presets = []
+  unavailableReason = ""
+  applyResult = undefined
   sendMessage = vi.fn(async (command: { type: string; [key: string]: unknown }) => reply(command))
   vi.stubGlobal("chrome", {
     runtime: { sendMessage },
@@ -147,6 +153,46 @@ describe("浏览器预设页", () => {
     await waitFor(() => expect(screen.queryByText("iPhone 15")).not.toBeInTheDocument())
   })
 
+  it("应用预设成功后给出可见反馈", async () => {
+    presets = [preset()]
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("已应用「iPhone 15」")
+    expect(commands("apply")).toMatchObject([{ target: "browser-preset", type: "apply", id: "preset-1" }])
+  })
+
+  it("受限页面上禁用在点击前应用并说明原因", async () => {
+    presets = [preset()]
+    unavailableReason = "Chrome 网上应用店禁止扩展注入"
+    renderPage()
+    const button = await screen.findByRole("button", { name: "应用 iPhone 15" })
+    expect(button).toBeDisabled()
+    expect(screen.getByText(/Chrome 网上应用店禁止扩展注入/)).toBeInTheDocument()
+    fireEvent.click(button)
+    expect(commands("apply")).toHaveLength(0)
+  })
+
+  it("应用失败时展示可读原因", async () => {
+    presets = [preset()]
+    applyResult = { ok: false, error: "该标签页已打开 DevTools，无法模拟" }
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("该标签页已打开 DevTools，无法模拟")
+  })
+
+  it("后台返回错误时展示原因", async () => {
+    sendMessage = vi.fn(async (command: { type: string }) =>
+      command.type === "list" ? { ok: true, presets: [] } : { ok: false, error: "存储写入失败" }
+    )
+    vi.stubGlobal("chrome", { runtime: { sendMessage }, tabs: { query: vi.fn().mockResolvedValue([{ id: 7 }]) } })
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
+    fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "测试" } })
+    fireEvent.click(screen.getByRole("button", { name: "iPad mini" }))
+    fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("存储写入失败")
+  })
+
   it("移动端判定冲突时弹确认框并展示实际下发值与风险", async () => {
     renderPage()
     fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
@@ -203,17 +249,5 @@ describe("浏览器预设页", () => {
 
     expect(await screen.findByText("Pixel 调试")).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-  })
-
-  it("后台返回错误时展示原因", async () => {    sendMessage = vi.fn(async (command: { type: string }) =>
-      command.type === "list" ? { ok: true, presets: [] } : { ok: false, error: "存储写入失败" }
-    )
-    vi.stubGlobal("chrome", { runtime: { sendMessage }, tabs: { query: vi.fn().mockResolvedValue([{ id: 7 }]) } })
-    renderPage()
-    fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
-    fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "测试" } })
-    fireEvent.click(screen.getByRole("button", { name: "iPad mini" }))
-    fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent("存储写入失败")
   })
 })

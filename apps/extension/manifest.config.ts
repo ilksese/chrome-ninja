@@ -131,7 +131,7 @@ export default {
   },
   offline_enabled: true,
   host_permissions: ["<all_urls>"],
-  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite"],
+  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite", "debugger"],
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],
