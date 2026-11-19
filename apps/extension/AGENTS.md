@@ -68,7 +68,7 @@
 - `mobileConflictOf` compares the identity's `metadata.mobile` with the preset's `viewport.mobile`. A disagreeing pair makes `create`/`update` return `needsConfirmation` plus the `MobileConflict` detail (`sec-ch-ua-mobile` value, layout treatment) and writes nothing; the page shows a confirmation dialog whose 确认风险 resends the same draft with `confirmConflict: true`, and whose 取消 keeps the form untouched. Stored values are never corrected silently.
 - `src/browser-preset/devices.ts` holds the device tiers. They only fill the viewport fields and are never stored.
 - `/browser-presets` renders `src/pages/BrowserPresets.tsx` from the Home card in both Popup and Options. First-time copy explains that applying a preset needs the debugger permission. The device scale factor input uses `step="any"` because tiers such as the Pixel 8 send 2.625, which a fixed step would reject before the form submits.
-- Tests exercise the protocol in `tests/browser-preset-background.test.ts`, the identity packages in `tests/browser-preset-identity.test.ts`, the page in `tests/browser-presets-page.test.tsx`, and the Home card in `tests/home-browser-preset-entry.test.tsx`.
+- Tests exercise the protocol, the identity packages, the page, and the Home card in `tests/browser-preset-*.test.*` and `tests/home-browser-preset-entry.test.tsx`. Like every test file in this repo, they stay untracked: they live on disk and run locally, but are not committed.
 
 ## Checks
 
