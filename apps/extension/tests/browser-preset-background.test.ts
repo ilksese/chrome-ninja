@@ -21,6 +21,9 @@ let groups: Map<number, string>
 let nextGroupId = 100
 let tabUpdated: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => void
 let groupRemoved: (group: chrome.tabGroups.TabGroup) => void
+let debuggerDetached: (source: chrome.debugger.Debuggee, reason: string) => void
+/** 已关闭的标签页：反查它们时与 Chrome 一样抛错。 */
+let closedTabs: Set<number>
 const sender = { id: "extension" } as chrome.runtime.MessageSender
 const popupSender = { id: "extension", url: "chrome-extension://extension/index.html" } as chrome.runtime.MessageSender
 /** 对第二个标签页发起命令时的发送方；目标标签页由发送方推导。 */
@@ -75,6 +78,7 @@ beforeEach(async () => {
   tabUrl = "https://example.com/page"
   tabGroupIds = new Map()
   groups = new Map()
+  closedTabs = new Set()
   nextGroupId = 100
   vi.resetModules()
   vi.stubGlobal("chrome", {
@@ -115,12 +119,10 @@ beforeEach(async () => {
       )
     },
     tabs: {
-      get: vi.fn(async (tabId: number) => ({
-        id: tabId,
-        url: tabUrl,
-        windowId: 3,
-        groupId: tabGroupIds.get(tabId) ?? -1
-      })),
+      get: vi.fn(async (tabId: number) => {
+        if (closedTabs.has(tabId)) throw new Error("No tab with id: " + tabId)
+        return { id: tabId, url: tabUrl, windowId: 3, groupId: tabGroupIds.get(tabId) ?? -1 }
+      }),
       query: vi.fn(async (query: chrome.tabs.QueryInfo) => [
         { id: 7, url: tabUrl, active: true, windowId: 3, groupId: tabGroupIds.get(7) ?? -1, ...query }
       ]),
@@ -185,11 +187,18 @@ beforeEach(async () => {
       }),
       detach: vi.fn(async (target: chrome.debugger.Debuggee) => {
         commands.push(["detach", target])
+        // 与 Chrome 一致：主动分离也会触发 onDetach。
+        debuggerDetached?.(target, "canceled_by_user")
       }),
       sendCommand: vi.fn(async (target: chrome.debugger.Debuggee, method: string, params: object) => {
         commands.push([method, params])
         return {}
-      })
+      }),
+      onDetach: {
+        addListener: (fn: (source: chrome.debugger.Debuggee, reason: string) => void) => {
+          debuggerDetached = fn
+        }
+      }
     },
     storage: {
       local: {
@@ -530,6 +539,91 @@ describe("标签页分组生命周期", () => {
   })
 })
 
+describe("会话终止归因", () => {
+  const create = async (patched: Partial<PresetDraft> = {}) => {
+    const created = await request({ type: "create", preset: draft(patched) })
+    expect(created.ok, created.error).toBe(true)
+    return created.preset!
+  }
+
+  const apply = (presetId: string) => request({ type: "apply", id: presetId }, popupSender)
+
+  const status = async () => {
+    const response = await request({ type: "status" }, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    return response
+  }
+
+  /** 只对指定标签页生效的分离事件，避开主动分离带来的连带触发。 */
+  const detachOnly = (tabId: number, reason: string) => debuggerDetached?.({ tabId }, reason)
+
+  it("会话被终止后标签页仍在时判定为 DevTools 抢占，执行退出模拟", async () => {
+    const preset = await create()
+    await apply(preset.id)
+    commands = []
+    detachOnly(7, "replaced_with_devtools")
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    const state = await status()
+    expect(state).toMatchObject({ presetId: undefined })
+    expect(state.notice).toBe("DevTools 已接管，模拟已取消")
+  })
+
+  it("用户在浏览器提示条点取消导致分离时同样退出模拟", async () => {
+    const preset = await create()
+    await apply(preset.id)
+    commands = []
+    detachOnly(7, "canceled_by_user")
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    const state = await status()
+    expect(state).toMatchObject({ presetId: undefined })
+    expect(state.notice).toBe("模拟已取消")
+  })
+
+  it("标签页已关闭时静默清理，不重新加载也不报错", async () => {
+    const preset = await create()
+    await apply(preset.id)
+    commands = []
+    closedTabs.add(7)
+    detachOnly(7, "tab_closed")
+    // 反查关闭的标签页会抛错，这正是静默清理的判定依据。
+    await vi.waitFor(() => expect(chrome.tabs.get).toHaveBeenCalledWith(7))
+    // 关闭的标签页既不能 detach 也不能 reload：只清内存，不产生任何浏览器调用。
+    expect(commands).toEqual([])
+
+    // 同 id 的标签页重新出现时是新会话，不应继承已关闭标签页的模拟状态。
+    closedTabs.delete(7)
+    tabGroupIds.set(7, -1)
+    const revived = await status()
+    expect(revived.presetId).toBeUndefined()
+    // 静默清理不留下任何提示。
+    expect(revived.notice).toBeUndefined()
+  })
+
+  it("被动终止后预设恢复为可编辑、可删除的空闲状态", async () => {
+    const preset = await create()
+    await apply(preset.id)
+    detachOnly(7, "devtools")
+    await vi.waitFor(async () => expect((await status()).presetId).toBeUndefined())
+
+    const renamed = await request({ type: "update", id: preset.id, preset: draft({ name: "改名后" }) })
+    expect(renamed.ok, renamed.error).toBe(true)
+    const removed = await request({ type: "delete", id: preset.id })
+    expect(removed.ok, removed.error).toBe(true)
+    expect(await list()).toEqual([])
+  })
+
+  it("主动退出模拟不会重复触发退出流程", async () => {
+    const preset = await create()
+    await apply(preset.id)
+    commands = []
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    // 主动 detach 会触发 onDetach，但映射已清空，不应再走一遍并多发一次 reload。
+    await vi.waitFor(() => expect(commands.filter(([name]) => name === "reload")).toHaveLength(1))
+    expect(commands.filter(([name]) => name === "detach")).toHaveLength(1)
+  })
+})
+
 describe("应用预设", () => {
   const apply = async (patched: Partial<PresetDraft> = {}, id?: string) => {
     const created = await request({ type: "create", preset: draft(patched) })
@@ -792,6 +886,17 @@ describe("与全局 UA 改写的协调", () => {
     dnrWrites = []
 
     userMovesTabOut(7)
+    await vi.waitFor(() => expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue }))
+  })
+
+  it("标签页关闭导致的被动终止同样归还全局规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    dnrWrites = []
+
+    // 关闭的标签页无法 detach 或 reload，但借走的全局让位必须还回来。
+    closedTabs.add(7)
+    debuggerDetached?.({ tabId: 7 }, "tab_closed")
     await vi.waitFor(() => expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue }))
   })
 

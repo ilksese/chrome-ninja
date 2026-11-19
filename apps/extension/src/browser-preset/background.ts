@@ -23,6 +23,9 @@ const suspendedTabs = new Set<number>()
 /** 扩展自己创建的标签页分组；用户自建的分组永远不在此集合内。 */
 const ownedGroupIds = new Set<number>()
 
+/** 被动终止后待展示的一次性提示；只活在后台内存里，被读取即清空。 */
+const notices = new Map<number, string>()
+
 const GROUP_TITLE_PREFIX = "[ninja] "
 
 const groupTitleOf = (preset: BrowserPreset) => `${GROUP_TITLE_PREFIX}${preset.name}`
@@ -96,6 +99,15 @@ async function inForeignGroup(tabId: number) {
 }
 
 /**
+ * 只清内存：归还让位、清空会话映射，不触碰浏览器。
+ * 标签页已经消失时浏览器自己会清掉覆盖，这两步是唯一还有意义的部分。
+ */
+async function forgetTab(tabId: number) {
+  if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
+  appliedByTab.delete(tabId)
+}
+
+/**
  * 退出模拟的唯一入口：归还全局改写让位、分离调试会话、清空会话映射，再重新加载。
  * 浏览器会随分离清除全部模拟覆盖，因此不需要逐个撤销。
  * 用户移出分组与后续的退出命令（#21）都走这里。
@@ -103,10 +115,26 @@ async function inForeignGroup(tabId: number) {
 async function endSession(tabId: number) {
   if (!appliedByTab.has(tabId)) return
   // 让位是应用时借的，必须在这个统一出口归还，否则全局改写会一直处于移除状态。
-  if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
-  appliedByTab.delete(tabId)
+  await forgetTab(tabId)
   await chrome.debugger.detach({ tabId }).catch(() => {})
   await chrome.tabs.reload(tabId).catch(() => {})
+}
+
+/** 分离事件不带来源，只能按标签页是否还在反查归因。 */
+async function attributeDetach(source: chrome.debugger.Debuggee, reason: string) {
+  const tabId = source.tabId
+  if (tabId === undefined || !appliedByTab.has(tabId)) return
+  // 标签页已关闭：映射随标签页失效，静默清理，不留任何提示。
+  const tabExists = await chrome.tabs.get(tabId).then(
+    () => true,
+    () => false
+  )
+  if (!tabExists) {
+    await forgetTab(tabId)
+    return
+  }
+  notices.set(tabId, reason === "canceled_by_user" ? "模拟已取消" : "DevTools 已接管，模拟已取消")
+  await endSession(tabId)
 }
 
 async function applyPreset(preset: BrowserPreset, tabId: number) {
@@ -182,6 +210,11 @@ export function registerBrowserPresetBackground() {
     void endSession(tabId)
   })
 
+  // DevTools 抢占、浏览器提示条取消与标签页关闭都会走到这里，来源需要按标签页反查。
+  chrome.debugger.onDetach.addListener((source, reason) => {
+    void attributeDetach(source, reason)
+  })
+
   chrome.runtime.onMessage.addListener(
     (
       incoming: BrowserPresetRequest,
@@ -228,11 +261,15 @@ export function registerBrowserPresetBackground() {
         }
         if (message.type === "status") {
           const tabId = await targetTabId(sender)
+          const notice = notices.get(tabId)
+          // 一次性提示：读走即清，避免每次查状态都重复弹。
+          notices.delete(tabId)
           return {
             ok: true,
             tabId,
             unavailableReason: await unavailableReasonFor(tabId),
-            presetId: appliedByTab.get(tabId)?.presetId
+            presetId: appliedByTab.get(tabId)?.presetId,
+            notice
           }
         }
         if (message.type === "apply") {

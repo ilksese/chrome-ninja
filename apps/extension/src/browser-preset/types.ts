@@ -71,6 +71,8 @@ export type BrowserPresetResponse = {
   presetId?: string
   /** 目标标签页不可模拟的原因，空串表示可以模拟；`status` 返回。 */
   unavailableReason?: string
+  /** 待展示的一次性提示，读取后即清空；`status` 返回。 */
+  notice?: string
 }
 
 /** 后台内存中「标签页正在模拟哪个预设」的映射，不持久化，扩展重启即丢失。 */
