@@ -13,6 +13,8 @@ let receive: (
 ) => boolean
 let storage: Record<string, unknown>
 let commands: Array<[string, unknown]>
+/** 全局 DNR 规则的写操作记录：`remove` 表示移除规则，`add` 携带新规则。 */
+let dnrWrites: Array<{ removed: boolean; addedUa?: string }> = []
 let tabUrl = "https://example.com/page"
 let tabGroupIds: Map<number, number>
 let groups: Map<number, string>
@@ -72,6 +74,7 @@ const list = async () => {
 beforeEach(async () => {
   storage = {}
   commands = []
+  dnrWrites = []
   tabUrl = "https://example.com/page"
   tabGroupIds = new Map()
   groups = new Map()
@@ -87,6 +90,33 @@ beforeEach(async () => {
           receive = fn
         }
       }
+    },
+    declarativeNetRequest: {
+      RuleActionType: { MODIFY_HEADERS: "modifyHeaders" },
+      HeaderOperation: { SET: "set" },
+      ResourceType: {
+        MAIN_FRAME: "main_frame",
+        SUB_FRAME: "sub_frame",
+        XMLHTTPREQUEST: "xmlhttprequest",
+        SCRIPT: "script",
+        IMAGE: "image",
+        STYLESHEET: "stylesheet",
+        FONT: "font",
+        MEDIA: "media",
+        WEBSOCKET: "websocket",
+        OTHER: "other"
+      },
+      updateDynamicRules: vi.fn(
+        async (update: {
+          removeRuleIds?: number[]
+          addRules?: Array<{ action: { requestHeaders: Array<{ value?: string }> } }>
+        }) => {
+          dnrWrites.push({
+            removed: (update.removeRuleIds ?? []).length > 0,
+            addedUa: update.addRules?.[0]?.action.requestHeaders[0].value
+          })
+        }
+      )
     },
     tabs: {
       get: vi.fn(async (tabId: number) => {
@@ -155,14 +185,14 @@ beforeEach(async () => {
       attach: vi.fn(async (target: chrome.debugger.Debuggee) => {
         commands.push(["attach", target])
       }),
+      detach: vi.fn(async (target: chrome.debugger.Debuggee) => {
+        commands.push(["detach", target])
+        // 与 Chrome 一致：主动分离也会触发 onDetach。
+        debuggerDetached?.(target, "canceled_by_user")
+      }),
       sendCommand: vi.fn(async (target: chrome.debugger.Debuggee, method: string, params: object) => {
         commands.push([method, params])
         return {}
-      }),
-      // 与 Chrome 一致：主动分离也会触发 onDetach。
-      detach: vi.fn(async (target: chrome.debugger.Debuggee) => {
-        commands.push(["detach", target])
-        debuggerDetached?.(target, "canceled_by_user")
       }),
       onDetach: {
         addListener: (fn: (source: chrome.debugger.Debuggee, reason: string) => void) => {
@@ -290,7 +320,11 @@ describe("浏览器预设后台协议", () => {
 
     const desktop = await request({
       type: "create",
-      preset: draft({ name: "桌面", userAgent: "chrome-desktop", viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false } })
+      preset: draft({
+        name: "桌面",
+        userAgent: "chrome-desktop",
+        viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false }
+      })
     })
     expect(desktop.ok, desktop.error).toBe(true)
     expect(desktop.needsConfirmation).toBeUndefined()
@@ -597,12 +631,91 @@ describe("应用预设", () => {
     return request({ type: "apply", id: id ?? created.preset!.id }, popupSender)
   }
 
-  it("按附加、设备度量覆盖、重新加载的顺序作用到当前标签页", async () => {
+  it("按附加、设备度量覆盖、UA 覆盖、重新加载的顺序作用到当前标签页", async () => {
     const response = await apply()
+    expect(response.ok, response.error).toBe(true)
+    expect(commands.map(([method]) => method)).toEqual([
+      "attach",
+      "Emulation.setDeviceMetricsOverride",
+      "Emulation.setUserAgentOverride",
+      "reload"
+    ])
+    expect(commands[1][1]).toEqual({ width: 393, height: 852, deviceScaleFactor: 3, mobile: true })
+  })
+
+  it("Safari 类预设不下发 userAgentMetadata", async () => {
+    const response = await apply()
+    expect(response.ok, response.error).toBe(true)
+    const [, params] = commands.find(([method]) => method === "Emulation.setUserAgentOverride")!
+    expect(params).toEqual({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+      platform: "iPhone"
+    })
+    expect(params).not.toHaveProperty("userAgentMetadata")
+  })
+
+  it("模拟 Android 时显式下发空 bitness 与空 architecture", async () => {
+    const response = await apply({
+      name: "Pixel 8",
+      userAgent: "chrome-android",
+      viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    })
+    expect(response.ok, response.error).toBe(true)
+    const [, params] = commands.find(([method]) => method === "Emulation.setUserAgentOverride")!
+    expect(params).toMatchObject({
+      platform: "Linux armv81",
+      userAgentMetadata: {
+        platform: "Android",
+        platformVersion: "14.0.0",
+        architecture: "",
+        model: "Pixel 8 Pro",
+        mobile: true,
+        bitness: "",
+        wow64: false,
+        formFactors: ["Mobile"]
+      }
+    })
+  })
+
+  it("UA 覆盖同时下发 userAgent、platform 与完整 userAgentMetadata", async () => {
+    const response = await apply({
+      name: "桌面",
+      userAgent: "chrome-desktop",
+      viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false }
+    })
     expect(response.ok, response.error).toBe(true)
     expect(commands).toEqual([
       ["attach", { tabId: 7 }],
-      ["Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 3, mobile: true }],
+      ["Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false }],
+      [
+        "Emulation.setUserAgentOverride",
+        {
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+          platform: "Win32",
+          userAgentMetadata: {
+            brands: [
+              { brand: "Not)A;Brand", version: "99" },
+              { brand: "Google Chrome", version: "127" },
+              { brand: "Chromium", version: "127" }
+            ],
+            fullVersionList: [
+              { brand: "Not)A;Brand", version: "99.0.0.0" },
+              { brand: "Google Chrome", version: "127.0.0.0" },
+              { brand: "Chromium", version: "127.0.0.0" }
+            ],
+            platform: "Windows",
+            platformVersion: "10.0.0",
+            architecture: "x86",
+            model: "",
+            mobile: false,
+            bitness: "64",
+            wow64: false,
+            formFactors: ["Desktop"]
+          }
+        }
+      ],
       ["reload", { tabId: 7 }]
     ])
   })
@@ -665,5 +778,161 @@ describe("应用预设", () => {
     const response = await request({ type: "status" }, popupSender)
     expect(response.ok, response.error).toBe(true)
     expect(response.unavailableReason).toBe("该标签页已打开 DevTools，无法模拟")
+  })
+})
+
+describe("与全局 UA 改写的协调", () => {
+  /** 全局规则由后台入口的 storage 变更监听重建；这里直接复现该入口。 */
+  let syncGlobalRule: (userAgent: string) => Promise<void>
+  const desktopUaValue =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+
+  beforeEach(async () => {
+    const { applyUserAgentRule } = await import("../src/user-agent")
+    syncGlobalRule = (userAgent) => applyUserAgentRule(userAgent as never)
+  })
+
+  const apply = async (patched: Partial<PresetDraft> = {}) => {
+    const created = await request({ type: "create", preset: draft(patched) })
+    expect(created.ok, created.error).toBe(true)
+    return request({ type: "apply", id: created.preset!.id }, popupSender)
+  }
+
+    const android = {
+      name: "Pixel 8",
+      userAgent: "chrome-android",
+      viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    }
+    const viewportOnly = {
+      name: "只测视口",
+      userAgent: "default",
+      viewport: { width: 393, height: 852, deviceScaleFactor: 3, mobile: true }
+    }
+
+  it("具体 UA 应用期间移除全局改写规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    expect(dnrWrites).toEqual([{ removed: true, addedUa: desktopUaValue }])
+
+    const response = await apply(android)
+    expect(response.ok, response.error).toBe(true)
+    expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: undefined })
+  })
+
+  it("不覆盖 UA 时完全不触碰全局规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    dnrWrites = []
+
+    const response = await apply(viewportOnly)
+    expect(response.ok, response.error).toBe(true)
+    expect(commands.map(([method]) => method)).not.toContain("Emulation.setUserAgentOverride")
+    expect(dnrWrites).toEqual([])
+  })
+
+  it("全局规则被重新同步时保持移除，不把规则加回来", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    dnrWrites = []
+
+    // 用户此时在首页改了全局设置：监听器会重新下发规则。
+    await syncGlobalRule("chrome-desktop")
+    expect(dnrWrites).toEqual([])
+  })
+
+  it("退出模拟后恢复全局规则的原始选择", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    dnrWrites = []
+
+    const response = await request({ type: "simulate-exit" } as object, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue })
+  })
+
+  it("原先关闭全局规则时退出后仍保持关闭", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    await syncGlobalRule("default")
+    dnrWrites = []
+
+    const response = await request({ type: "simulate-exit" } as object, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: undefined })
+  })
+
+  it("全局规则只在最后一个模拟标签页退出后恢复", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    const otherTab = await request(
+      { type: "apply", id: (await list())[0].id },
+      { id: "extension", frameId: 0, tab: { id: 8 }, url: "https://example.com/other" }
+    )
+    expect(otherTab.ok, otherTab.error).toBe(true)
+    dnrWrites = []
+
+    await request({ type: "simulate-exit" } as object, popupSender)
+    expect(dnrWrites).toEqual([])
+
+    const last = await request(
+      { type: "simulate-exit" } as object,
+      { id: "extension", frameId: 0, tab: { id: 8 }, url: "https://example.com/other" }
+    )
+    expect(last.ok, last.error).toBe(true)
+    expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue })
+  })
+
+  it("用户把标签页移出分组退出模拟时同样恢复全局规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    dnrWrites = []
+
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue }))
+  })
+
+  it("标签页关闭导致的被动终止同样归还全局规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    dnrWrites = []
+
+    // 关闭的标签页无法 detach 或 reload，但借走的全局让位必须还回来。
+    closedTabs.add(7)
+    debuggerDetached?.({ tabId: 7 }, "tab_closed")
+    await vi.waitFor(() => expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue }))
+  })
+
+  it("同一标签页切换到不覆盖 UA 的预设时归还全局规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    const created = await request({ type: "create", preset: draft(viewportOnly) })
+    dnrWrites = []
+
+    // 切换复用同一会话，不重复附加；#21 拥有切换命令，这里直接复现它调用的应用路径。
+    const switched = await request({ type: "apply", id: created.preset!.id }, popupSender)
+    expect(switched.ok, switched.error).toBe(true)
+    expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue })
+  })
+
+  it("分组加入失败时全局规则保持原状", async () => {
+    await syncGlobalRule("chrome-desktop")
+    const created = await request({ type: "create", preset: draft(android) })
+    const group = vi.mocked(chrome.tabs.group)
+    group.mockRejectedValueOnce(new Error("No group with id: 1")).mockRejectedValueOnce(new Error("Cannot move tab"))
+    dnrWrites = []
+
+    // 入组在让位之前失败：既没有借走全局规则，也就不需要恢复，规则应原封不动。
+    const failed = await request({ type: "apply", id: created.preset!.id }, popupSender)
+    expect(failed.ok).toBe(false)
+    expect(dnrWrites).toEqual([])
+  })
+
+  it("UA 覆盖下发失败时不残留让位状态", async () => {
+    await syncGlobalRule("chrome-desktop")
+    const created = await request({ type: "create", preset: draft(android) })
+    vi.mocked(chrome.debugger.sendCommand).mockRejectedValueOnce(new Error("Target closed"))
+    dnrWrites = []
+
+    const failed = await request({ type: "apply", id: created.preset!.id }, popupSender)
+    expect(failed.ok).toBe(false)
+    expect(dnrWrites).toEqual([])
   })
 })
