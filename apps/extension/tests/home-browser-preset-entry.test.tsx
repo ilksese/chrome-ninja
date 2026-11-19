@@ -32,6 +32,7 @@ beforeEach(() => {
   sendMessage = vi.fn(async (command: { type: string }) => reply(command))
   vi.stubGlobal("chrome", {
     storage: { local: { get: vi.fn(), set: vi.fn() } },
+    // Home 的 Cookie 编辑器入口会读当前活动标签页，虽与浏览器预设无关，仍需可用。
     tabs: { query: vi.fn().mockResolvedValue([{ id: 7, url: "https://example.com" }]) },
     runtime: { sendMessage }
   })

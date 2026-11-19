@@ -23,3 +23,9 @@ status: accepted
 模拟 Safari 类身份时不下发 `userAgentMetadata`。这是 Chromium 明确支持的能力（源码注释即为「模拟不发 UA client hints 的设备」），效果是全部 `sec-ch-ua-*` 头不出现，与真实 Safari 的请求头行为一致。硬边界是无法让 `navigator.userAgentData` 变为 `undefined`——该属性在 secure context 下始终存在，此时退化为 `brands: []`、`platform: ""`、`mobile: false`。
 
 UA 与 viewport 的 `mobile` 相互独立，允许组合出不一致的值。保存时检测冲突并二次确认，列出实际会发出的 `sec-ch-ua-mobile` 与布局行为，说明指纹割裂风险，由用户确认后保存；不静默修正用户填写的值。
+
+# 清除 UA 覆盖用空 `userAgent`
+
+从具体 UA 的预设切到「不覆盖」时，调试会话仍在复用，上一次的 UA 覆盖留在标签页里。只下发 `setDeviceMetricsOverride` 会让 `navigator.userAgent` 与请求头继续保持旧身份。
+
+`Emulation.setUserAgentOverride` 没有单独的 clear 命令，空 `userAgent` 就是「不覆盖」：`EmulationHandler::SetUserAgentOverride` 只在 `user_agent_` 非空时改写 `User-Agent` 头，`ApplyUserAgentMetadataOverrides` 在空串时直接返回 false，因此 client hints 一并回到宿主值；Blink 侧的 `InspectorEmulationAgent::ApplyUserAgentOverride` 同样只在覆盖串非空时生效。空串不能与 `userAgentMetadata` 同时传（协议返回 `InvalidParams`），`platform` 的覆盖值为空时也会自动回退真实 `navigator.platform`，所以清空只发 `{ userAgent: "" }`。
