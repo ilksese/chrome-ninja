@@ -536,10 +536,11 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
               {presets.map((preset) => {
                 // 使用中即锁定：数量来自后台，页面不自行判断；锁定只放开「停止」，其余编辑入口一并禁用。
                 const inUse = (usage[preset.id] ?? 0) > 0
+                // 窄屏（Popup）下按钮合计宽度会挤扁信息列，因此信息与操作分行；宽屏（Options）保持单行。
                 return (
                   <li
                     key={preset.id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-slate-950">{preset.name}</span>
                       <span className="mt-0.5 block text-xs text-slate-500">
@@ -555,46 +556,48 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                         </span>
                       )}
                     </span>
-                    <button
-                      className="shrink-0 rounded-lg bg-[#0c5fb8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#094c93] disabled:cursor-not-allowed disabled:opacity-50"
-                      type="button"
-                      aria-label={`应用 ${preset.name}`}
-                      title={tabReason || undefined}
-                      disabled={!!tabReason || applyingId === preset.id}
-                      onClick={() => void applyPreset(preset)}>
-                      {applyingId === preset.id ? "应用中" : "应用"}
-                    </button>
-                    {inUse && (
+                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                       <button
-                        className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff] disabled:opacity-60"
+                        className="shrink-0 rounded-lg bg-[#0c5fb8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#094c93] disabled:cursor-not-allowed disabled:opacity-50"
                         type="button"
-                        aria-label={`停止 ${preset.name}`}
-                        disabled={stoppingId === preset.id}
-                        onClick={() => void stopPreset(preset)}>
-                        {stoppingId === preset.id ? "停止中" : "停止"}
+                        aria-label={`应用 ${preset.name}`}
+                        title={tabReason || undefined}
+                        disabled={!!tabReason || applyingId === preset.id}
+                        onClick={() => void applyPreset(preset)}>
+                        {applyingId === preset.id ? "应用中" : "应用"}
                       </button>
-                    )}
-                    <button
-                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      type="button"
-                      aria-label={`编辑 ${preset.name}`}
-                      title={inUse ? "正在被使用的预设不能编辑，请先停止" : undefined}
-                      disabled={inUse}
-                      onClick={() => openEdit(preset)}>
-                      编辑
-                    </button>
-                    <button
-                      className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      type="button"
-                      aria-label={`删除 ${preset.name}`}
-                      title={inUse ? "正在被使用的预设不能删除，请先停止" : undefined}
-                      disabled={inUse}
-                      onClick={(event) => {
-                        deleteTriggerRef.current = event.currentTarget as HTMLElement
-                        setPendingDelete(preset)
-                      }}>
-                      删除
-                    </button>
+                      {inUse && (
+                        <button
+                          className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff] disabled:opacity-60"
+                          type="button"
+                          aria-label={`停止 ${preset.name}`}
+                          disabled={stoppingId === preset.id}
+                          onClick={() => void stopPreset(preset)}>
+                          {stoppingId === preset.id ? "停止中" : "停止"}
+                        </button>
+                      )}
+                      <button
+                        className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        type="button"
+                        aria-label={`编辑 ${preset.name}`}
+                        title={inUse ? "正在被使用的预设不能编辑，请先停止" : undefined}
+                        disabled={inUse}
+                        onClick={() => openEdit(preset)}>
+                        编辑
+                      </button>
+                      <button
+                        className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        type="button"
+                        aria-label={`删除 ${preset.name}`}
+                        title={inUse ? "正在被使用的预设不能删除，请先停止" : undefined}
+                        disabled={inUse}
+                        onClick={(event) => {
+                          deleteTriggerRef.current = event.currentTarget as HTMLElement
+                          setPendingDelete(preset)
+                        }}>
+                        删除
+                      </button>
+                    </div>
                   </li>
                 )
               })}

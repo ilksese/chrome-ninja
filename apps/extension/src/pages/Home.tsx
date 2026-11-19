@@ -440,7 +440,8 @@ const Home = ({ layout }: HomeProps) => {
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">运行中</span>
           </div>
 
-          <div className={cn("grid gap-3", isOptions ? "grid-cols-[minmax(0,1fr)_160px]" : "") }>
+          {/* 隐式 auto 列的下限是子项的 min-content，卡片的 truncate 文本会把它顶出容器并裁掉右缘。 */}
+          <div className={cn("grid gap-3", isOptions ? "grid-cols-[minmax(0,1fr)_160px]" : "grid-cols-[minmax(0,1fr)]") }>
             <button
               ref={triggerRef}
               className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60"
