@@ -1,6 +1,7 @@
 import NavigationBar from "@components/NavigationBar"
 import { cn } from "@chrome-ninja/utils"
 import { Navigate, Route, Routes, useLocation } from "react-router-dom"
+import BrowserPresets from "./pages/BrowserPresets"
 import Home from "./pages/Home"
 import Settings from "./pages/Settings"
 import VideoSniffer from "./pages/VideoSniffer"
@@ -28,6 +29,7 @@ function App({ layout }: AppProps) {
               <Route path="/" element={<Navigate replace to={isOptions ? "/settings" : "/home"} />} />
               <Route path="/home" element={<Home layout={layout} />} />
               <Route path="/video-sniffer" element={<VideoSniffer layout={layout} />} />
+              <Route path="/browser-presets" element={<BrowserPresets layout={layout} />} />
               <Route path="/settings" element={<Settings layout={layout} />} />
             </Routes>
           </div>

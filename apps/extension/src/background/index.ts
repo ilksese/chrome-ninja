@@ -11,9 +11,11 @@ import { registerTranslateBackground } from "@/translate/background"
 import { registerVideoSnifferBackground } from "@/video-sniffer/background"
 import { registerNetmonBackground } from "@/network-monitor/background"
 import { registerCookieEditorBackground } from "@/cookie-editor/background"
+import { registerBrowserPresetBackground } from "@/browser-preset/background"
 
 ninjaLog("background runing")
 registerCookieEditorBackground()
+registerBrowserPresetBackground()
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
 registerLoginStateExportBackground()
