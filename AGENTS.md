@@ -31,7 +31,7 @@
 
 - Build output is `dist` under the app being built; keep it out of commits.
 - TypeScript build info is written under `node_modules/.tmp`; keep it out of commits.
-- Do not commit `.codegraph/**`, `.playwright*`, `web-full.png`, or other local browser/debug artifacts.
+- Do not commit `.playwright*`, `web-full.png`, or other local browser/debug artifacts.
 
 ## Style And Tooling
 
