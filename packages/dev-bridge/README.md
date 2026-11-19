@@ -7,7 +7,7 @@ The service listens on `127.0.0.1:8787` by default and connects to the extension
 Package subpaths:
 
 - `@chrome-ninja/dev-bridge` and `@chrome-ninja/dev-bridge/server`: local Node service.
-- `@chrome-ninja/dev-bridge/client`: `connectDevBridgeBackground` and `connectDevBridgeClient` for extension contexts.
+- `@chrome-ninja/dev-bridge/client`: `connectDevBridgeBackground` and `connectDevBridgeClient` for extension contexts, and `DEV_BRIDGE_ENABLED` for the extension toolbar badge to share the same build flag.
 - `@chrome-ninja/dev-bridge/protocol`: shared browser-safe protocol types and constants.
 
 Protocol types and helpers use `DevBridge`, constants use `DEV_BRIDGE_`, and WebSocket messages and runtime port names use the `dev-bridge:` prefix.

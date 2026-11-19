@@ -5,7 +5,7 @@
 - This package is the local reload and debug bridge for the Chrome Ninja extension.
 - The package name is `@chrome-ninja/dev-bridge`; it lives under `packages/dev-bridge` in the workspace.
 - It is a Node ESM service with the entry point `src/server/index.mjs`.
-- Extension-side bridge code is exported from `@chrome-ninja/dev-bridge/client`.
+- Extension-side bridge code is exported from `@chrome-ninja/dev-bridge/client`, including `DEV_BRIDGE_ENABLED`, which the extension uses to set its toolbar badge.
 - Shared message types and constants are exported from `@chrome-ninja/dev-bridge/protocol`.
 - Development backgrounds focus the last focused normal Chrome window and open its action popup on their first service connection and after client or tab reloads. Chrome requires an active target window; focus it before passing its ID to `openPopup`. Reconnecting the same background does not open it again.
 - It is for local development only. Do not design it as a production remote-control surface.

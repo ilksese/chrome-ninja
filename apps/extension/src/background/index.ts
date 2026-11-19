@@ -1,5 +1,5 @@
 import { ninjaLog } from "@chrome-ninja/utils"
-import { connectDevBridgeBackground } from "@chrome-ninja/dev-bridge/client"
+import { connectDevBridgeBackground, DEV_BRIDGE_ENABLED } from "@chrome-ninja/dev-bridge/client"
 import { mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
 import { applyUserAgentRule } from "@/user-agent"
@@ -23,6 +23,9 @@ registerQrBackground()
 registerTranslateBackground()
 registerVideoSnifferBackground()
 registerNetmonBackground()
+void chrome.action.setBadgeText({ text: DEV_BRIDGE_ENABLED ? "dev" : "" }).catch((error) => {
+  console.warn("Failed to update toolbar badge", error)
+})
 connectDevBridgeBackground()
 
 chrome.runtime.onInstalled.addListener((details) => {
