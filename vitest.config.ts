@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config"
 const extensionSrc = fileURLToPath(new URL("./apps/extension/src", import.meta.url))
 const webSrc = fileURLToPath(new URL("./apps/web/src", import.meta.url))
 
-// Keep CRX, manifest scanning and development HMR out of the test process.
+// Keep CRX, manifest scanning and the development bridge out of the test process.
 export default defineConfig({
   test: {
     projects: [

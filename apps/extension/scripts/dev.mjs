@@ -8,13 +8,13 @@ const extensionRoot = fileURLToPath(new URL("..", import.meta.url))
 const srcRoot = fileURLToPath(new URL("../src", import.meta.url))
 const isWindows = process.platform === "win32"
 const pnpm = isWindows ? "pnpm.cmd" : "pnpm"
-const hmrPort = process.env.PORT || "8787"
-const reloadUrls = process.env.CHROME_NINJA_HMR_RELOAD_URL ? [process.env.CHROME_NINJA_HMR_RELOAD_URL] : [`https://127.0.0.1:${hmrPort}/reload`, `http://127.0.0.1:${hmrPort}/reload`]
+const devBridgePort = process.env.PORT || "8787"
+const reloadUrls = process.env.CHROME_NINJA_DEV_BRIDGE_RELOAD_URL ? [process.env.CHROME_NINJA_DEV_BRIDGE_RELOAD_URL] : [`https://127.0.0.1:${devBridgePort}/reload`, `http://127.0.0.1:${devBridgePort}/reload`]
 const allContentScriptMatches = ["*://*/*"]
 const bossContentScriptMatches = ["*://*.zhipin.com/*", "*://*.bosszhipin.com/*"]
 const processPrefixes = {
   extension: "[EXTENSION]",
-  hmr: "[HMR]"
+  devBridge: "[DEV-BRIDGE]"
 }
 
 let shuttingDown = false
@@ -28,9 +28,9 @@ const pendingChangedFiles = new Set()
 const watchers = startChangeWatchers()
 
 const children = [
-  start("hmr", ["--filter", "@chrome-ninja/hmr", "dev"], { prefix: processPrefixes.hmr }),
+  start("dev-bridge", ["--filter", "@chrome-ninja/dev-bridge", "dev"], { prefix: processPrefixes.devBridge }),
   start("extension", ["--filter", "@chrome-ninja/extension", "dev:build"], {
-    env: { VITE_CHROME_NINJA_HMR: "true" },
+    env: { VITE_CHROME_NINJA_DEV_BRIDGE: "true" },
     onStdout: observeExtensionBuildOutput,
     onStderr: observeExtensionBuildOutput,
     prefix: processPrefixes.extension
@@ -146,7 +146,7 @@ async function requestReload(action) {
 			console.log(`${processPrefixes.extension} requested ${describeReloadAction(action)}`)
 			return
 		} catch {
-			// Try the next local HMR URL.
+      // Try the next local development bridge URL.
 		}
 	}
 }

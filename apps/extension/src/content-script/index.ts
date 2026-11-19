@@ -1,3 +1,3 @@
-import { connectHmrClient } from "@chrome-ninja/hmr/client"
+import { connectDevBridgeClient } from "@chrome-ninja/dev-bridge/client"
 
-connectHmrClient("content")
+connectDevBridgeClient("content")

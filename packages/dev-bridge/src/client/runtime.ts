@@ -1,14 +1,14 @@
 import {
-  getHmrErrorMessage,
-  HMR_CLIENT_PORT_PREFIX,
-  normalizeHmrResult,
-  type HmrClientScope,
-  type HmrCommandMessage,
-  type HmrExecuteJsMessage,
-  type HmrJsonValue,
-  type HmrReloadClientMessage
+  getDevBridgeErrorMessage,
+  DEV_BRIDGE_CLIENT_PORT_PREFIX,
+  normalizeDevBridgeResult,
+  type DevBridgeClientScope,
+  type DevBridgeCommandMessage,
+  type DevBridgeExecuteJsMessage,
+  type DevBridgeJsonValue,
+  type DevBridgeReloadClientMessage
 } from "../protocol"
-import { HMR_ENABLED } from "./config"
+import { DEV_BRIDGE_ENABLED } from "./config"
 
 const DOM_QUERY_MAX_SELECTORS = 50
 const DOM_QUERY_DEFAULT_TEXT_LIMIT = 160
@@ -40,8 +40,8 @@ const DOM_QUERY_DEFAULT_COMPUTED_STYLE_PROPS = [
   "transform"
 ]
 
-export function connectHmrClient(scope: HmrClientScope) {
-  if (!HMR_ENABLED) return
+export function connectDevBridgeClient(scope: DevBridgeClientScope) {
+  if (!DEV_BRIDGE_ENABLED) return
   if (typeof chrome === "undefined" || !chrome.runtime?.connect) return
 
   let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | undefined
@@ -49,13 +49,13 @@ export function connectHmrClient(scope: HmrClientScope) {
   const connect = () => {
     let port: chrome.runtime.Port
     try {
-      port = chrome.runtime.connect({ name: `${HMR_CLIENT_PORT_PREFIX}${scope}` })
+      port = chrome.runtime.connect({ name: `${DEV_BRIDGE_CLIENT_PORT_PREFIX}${scope}` })
     } catch {
       reconnectTimer = globalThis.setTimeout(connect, 1000)
       return
     }
 
-    port.postMessage({ type: "hmr:client:hello", scope })
+    port.postMessage({ type: "dev-bridge:client:hello", scope })
     port.onMessage.addListener((message: unknown) => {
       if (isReloadClientMessage(message, scope)) {
         reloadClient()
@@ -76,30 +76,30 @@ export function connectHmrClient(scope: HmrClientScope) {
   }
 }
 
-async function executeCommand(port: chrome.runtime.Port, scope: HmrClientScope, message: HmrCommandMessage) {
+async function executeCommand(port: chrome.runtime.Port, scope: DevBridgeClientScope, message: DevBridgeCommandMessage) {
   try {
     const result = await runCommand(message)
     postResult(port, {
-      type: "hmr:client:command-result",
+      type: "dev-bridge:client:command-result",
       requestId: message.requestId,
       scope,
       command: message.command,
       ok: true,
-      result: normalizeHmrResult(result)
+      result: normalizeDevBridgeResult(result)
     })
   } catch (error) {
     postResult(port, {
-      type: "hmr:client:command-result",
+      type: "dev-bridge:client:command-result",
       requestId: message.requestId,
       scope,
       command: message.command,
       ok: false,
-      error: getHmrErrorMessage(error)
+      error: getDevBridgeErrorMessage(error)
     })
   }
 }
 
-async function runCommand(message: HmrCommandMessage) {
+async function runCommand(message: DevBridgeCommandMessage) {
   switch (message.command) {
     case "dom:query":
       return queryDom(message.payload)
@@ -108,7 +108,7 @@ async function runCommand(message: HmrCommandMessage) {
   }
 }
 
-function queryDom(payload: HmrJsonValue | undefined) {
+function queryDom(payload: DevBridgeJsonValue | undefined) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("payload must be an object")
 
   const selectors = (payload as { selectors?: unknown }).selectors
@@ -124,7 +124,7 @@ function queryDom(payload: HmrJsonValue | undefined) {
   const limitHtml = normalizeHtmlLimit((payload as { limitHtml?: unknown }).limitHtml)
   const childrenLimit = normalizeChildrenLimit((payload as { childrenLimit?: unknown }).childrenLimit)
   const computedStyle = normalizeComputedStyle((payload as { computedStyle?: unknown }).computedStyle)
-  const result: Record<string, HmrJsonValue> = {}
+  const result: Record<string, DevBridgeJsonValue> = {}
 
   for (const [name, selector] of entries) {
     if (typeof selector !== "string" || selector.trim().length === 0)
@@ -194,16 +194,16 @@ type DomQueryOptions = {
   computedStyle: string[]
 }
 
-function inspectSelector(selector: string, include: string[], options: DomQueryOptions): HmrJsonValue {
+function inspectSelector(selector: string, include: string[], options: DomQueryOptions): DevBridgeJsonValue {
   let nodes: Element[]
   try {
     nodes = Array.from(document.querySelectorAll(selector))
   } catch (error) {
-    return { selector, count: 0, exists: false, error: getHmrErrorMessage(error) }
+    return { selector, count: 0, exists: false, error: getDevBridgeErrorMessage(error) }
   }
 
   const node = nodes[0]
-  const output: Record<string, HmrJsonValue> = { selector }
+  const output: Record<string, DevBridgeJsonValue> = { selector }
   if (include.includes("count")) output.count = nodes.length
   if (include.includes("exists")) output.exists = Boolean(node)
   if (!node) return output
@@ -236,7 +236,7 @@ function inspectSelector(selector: string, include: string[], options: DomQueryO
   return output
 }
 
-function inspectNode(node: Element): HmrJsonValue {
+function inspectNode(node: Element): DevBridgeJsonValue {
   return {
     tagName: node.tagName.toLowerCase(),
     nodeName: node.nodeName,
@@ -250,20 +250,20 @@ function inspectNode(node: Element): HmrJsonValue {
   }
 }
 
-function inspectAttributes(node: Element): HmrJsonValue {
-  const attributes: Record<string, HmrJsonValue> = {}
+function inspectAttributes(node: Element): DevBridgeJsonValue {
+  const attributes: Record<string, DevBridgeJsonValue> = {}
   for (const attribute of Array.from(node.attributes)) attributes[attribute.name] = attribute.value
   return attributes
 }
 
-function inspectDataset(node: Element): HmrJsonValue {
+function inspectDataset(node: Element): DevBridgeJsonValue {
   if (!(node instanceof HTMLElement)) return {}
-  const dataset: Record<string, HmrJsonValue> = {}
+  const dataset: Record<string, DevBridgeJsonValue> = {}
   for (const [key, value] of Object.entries(node.dataset)) dataset[key] = value || ""
   return dataset
 }
 
-function inspectRect(rect: DOMRect): HmrJsonValue {
+function inspectRect(rect: DOMRect): DevBridgeJsonValue {
   return {
     x: roundLayoutNumber(rect.x),
     y: roundLayoutNumber(rect.y),
@@ -276,7 +276,7 @@ function inspectRect(rect: DOMRect): HmrJsonValue {
   }
 }
 
-function inspectBox(node: Element): HmrJsonValue {
+function inspectBox(node: Element): DevBridgeJsonValue {
   const element = node as HTMLElement
   return {
     offsetWidth: element.offsetWidth || 0,
@@ -292,13 +292,13 @@ function inspectBox(node: Element): HmrJsonValue {
   }
 }
 
-function inspectComputedStyle(style: CSSStyleDeclaration, properties: string[]): HmrJsonValue {
-  const output: Record<string, HmrJsonValue> = {}
+function inspectComputedStyle(style: CSSStyleDeclaration, properties: string[]): DevBridgeJsonValue {
+  const output: Record<string, DevBridgeJsonValue> = {}
   for (const property of properties) output[property] = style.getPropertyValue(property)
   return output
 }
 
-function inspectChildren(node: Element, limit: number, limitText: number): HmrJsonValue {
+function inspectChildren(node: Element, limit: number, limitText: number): DevBridgeJsonValue {
   return Array.from(node.children)
     .slice(0, limit)
     .map((child) => ({
@@ -358,23 +358,23 @@ function normalizeText(value: string, limit: number) {
   return limit > 0 ? text.slice(0, limit) : ""
 }
 
-async function executeCode(port: chrome.runtime.Port, scope: HmrClientScope, message: HmrExecuteJsMessage) {
+async function executeCode(port: chrome.runtime.Port, scope: DevBridgeClientScope, message: DevBridgeExecuteJsMessage) {
   try {
     const result = await Promise.resolve(globalThis.eval(message.code))
     postResult(port, {
-      type: "hmr:client:execute-result",
+      type: "dev-bridge:client:execute-result",
       requestId: message.requestId,
       scope,
       ok: true,
-      result: normalizeHmrResult(result)
+      result: normalizeDevBridgeResult(result)
     })
   } catch (error) {
     postResult(port, {
-      type: "hmr:client:execute-result",
+      type: "dev-bridge:client:execute-result",
       requestId: message.requestId,
       scope,
       ok: false,
-      error: getHmrErrorMessage(error)
+      error: getDevBridgeErrorMessage(error)
     })
   }
 }
@@ -393,26 +393,26 @@ function reloadClient() {
   }, 0)
 }
 
-function isReloadClientMessage(message: unknown, scope: HmrClientScope): message is HmrReloadClientMessage {
+function isReloadClientMessage(message: unknown, scope: DevBridgeClientScope): message is DevBridgeReloadClientMessage {
   if (!message || typeof message !== "object") return false
-  const candidate = message as Partial<HmrReloadClientMessage>
+  const candidate = message as Partial<DevBridgeReloadClientMessage>
   return (
-    candidate.type === "hmr:reload-client" && (!Array.isArray(candidate.scopes) || candidate.scopes.includes(scope))
+    candidate.type === "dev-bridge:reload-client" && (!Array.isArray(candidate.scopes) || candidate.scopes.includes(scope))
   )
 }
 
-function isExecuteMessage(message: unknown): message is HmrExecuteJsMessage {
+function isExecuteMessage(message: unknown): message is DevBridgeExecuteJsMessage {
   if (!message || typeof message !== "object") return false
-  const candidate = message as Partial<HmrExecuteJsMessage>
+  const candidate = message as Partial<DevBridgeExecuteJsMessage>
   return (
-    candidate.type === "hmr:execute-js" && typeof candidate.requestId === "string" && typeof candidate.code === "string"
+    candidate.type === "dev-bridge:execute-js" && typeof candidate.requestId === "string" && typeof candidate.code === "string"
   )
 }
 
-function isCommandMessage(message: unknown): message is HmrCommandMessage {
+function isCommandMessage(message: unknown): message is DevBridgeCommandMessage {
   if (!message || typeof message !== "object") return false
-  const candidate = message as Partial<HmrCommandMessage>
+  const candidate = message as Partial<DevBridgeCommandMessage>
   return (
-    candidate.type === "hmr:command" && typeof candidate.requestId === "string" && typeof candidate.command === "string"
+    candidate.type === "dev-bridge:command" && typeof candidate.requestId === "string" && typeof candidate.command === "string"
   )
 }

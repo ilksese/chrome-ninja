@@ -1,28 +1,38 @@
-# @chrome-ninja/hmr
+# @chrome-ninja/dev-bridge
 
-Local HMR and debug service for the Chrome Ninja extension.
+Local development reload and debug bridge for the Chrome Ninja extension.
 
 The service listens on `127.0.0.1:8787` by default and connects to the extension background service worker over WebSocket. It is intended for local development only.
 
 Package subpaths:
 
-- `@chrome-ninja/hmr` and `@chrome-ninja/hmr/server`: local Node HMR service.
-- `@chrome-ninja/hmr/client`: extension-side background and runtime clients.
-- `@chrome-ninja/hmr/protocol`: shared browser-safe protocol types and constants.
+- `@chrome-ninja/dev-bridge` and `@chrome-ninja/dev-bridge/server`: local Node service.
+- `@chrome-ninja/dev-bridge/client`: `connectDevBridgeBackground` and `connectDevBridgeClient` for extension contexts.
+- `@chrome-ninja/dev-bridge/protocol`: shared browser-safe protocol types and constants.
+
+Protocol types and helpers use `DevBridge`, constants use `DEV_BRIDGE_`, and WebSocket messages and runtime port names use the `dev-bridge:` prefix.
 
 ## Start
 
 ```bash
-pnpm --filter @chrome-ninja/hmr dev
+pnpm --filter @chrome-ninja/dev-bridge dev
 ```
 
 Environment variables:
 
 - `HOST`: bind host, defaults to `127.0.0.1`.
 - `PORT`: bind port, defaults to `8787`.
-- `CHROME_NINJA_HMR_CERT` / `CHROME_NINJA_DEBUG_CERT`: optional HTTPS cert path.
-- `CHROME_NINJA_HMR_KEY` / `CHROME_NINJA_DEBUG_KEY`: optional HTTPS key path.
-- `CHROME_NINJA_HMR_EXECUTE_TIMEOUT_MS`: command/execute timeout, defaults to `15000`.
+- `CHROME_NINJA_DEV_BRIDGE_CERT`: optional HTTPS cert path.
+- `CHROME_NINJA_DEV_BRIDGE_KEY`: optional HTTPS key path.
+- `CHROME_NINJA_DEV_BRIDGE_EXECUTE_TIMEOUT_MS`: command/execute timeout, defaults to `15000`.
+
+## Extension development
+
+Root `pnpm dev` starts this service alongside the extension's `vite build --watch`, with `VITE_CHROME_NINJA_DEV_BRIDGE=true`. Load `apps/extension/dist` as an unpacked extension in Chrome once before using automatic reloads.
+
+After each successful build, the development script reloads the affected extension pages, matching web tabs, or the entire extension. These are full reloads; in-memory UI state is not preserved. The background brings the last focused normal Chrome window to the foreground and opens its toolbar popup on its first service connection and after client or tab reloads. A whole-extension reload opens the popup when the new background connects. A transient service reconnect alone does not reopen the popup. Chrome requires the target window to be active, so automatic opening can move focus away from the editor. Chrome closes the popup when it loses focus; automatic opening does not keep it pinned open. If no normal Chrome window exists, opening fails without interrupting reloads.
+
+Client connections are enabled by Vite development mode or `VITE_CHROME_NINJA_DEV_BRIDGE=true`; ordinary production builds do not connect or open the popup automatically. The development script accepts `CHROME_NINJA_DEV_BRIDGE_RELOAD_URL` to override its reload endpoint; extension health discovery uses port `8787`.
 
 ## Health
 

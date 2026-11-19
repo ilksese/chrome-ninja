@@ -1,5 +1,5 @@
 import { ninjaLog } from "@chrome-ninja/utils"
-import { connectHmrBackground } from "@chrome-ninja/hmr/client"
+import { connectDevBridgeBackground } from "@chrome-ninja/dev-bridge/client"
 import { mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
 import { applyUserAgentRule } from "@/user-agent"
@@ -23,7 +23,7 @@ registerQrBackground()
 registerTranslateBackground()
 registerVideoSnifferBackground()
 registerNetmonBackground()
-connectHmrBackground()
+connectDevBridgeBackground()
 
 chrome.runtime.onInstalled.addListener((details) => {
   switch (details.reason) {

@@ -5,7 +5,7 @@
 ## 包职责
 
 - `@chrome-ninja/utils`：导出 `cn`、`ninjaLog` 等小工具。
-- `@chrome-ninja/hmr`：本地 HMR/debug 服务，供扩展在开发期连接。
+- `@chrome-ninja/dev-bridge`：本地开发重载与调试桥，供扩展在开发期连接并自动打开 Popup。
 
 ## 改动规则
 

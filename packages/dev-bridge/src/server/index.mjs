@@ -5,12 +5,12 @@ import https from "node:https"
 
 const host = process.env.HOST || "127.0.0.1"
 const port = Number(process.env.PORT || 8787)
-const certPath = process.env.CHROME_NINJA_HMR_CERT || process.env.CHROME_NINJA_DEBUG_CERT
-const keyPath = process.env.CHROME_NINJA_HMR_KEY || process.env.CHROME_NINJA_DEBUG_KEY
-const service = "@chrome-ninja/hmr"
+const certPath = process.env.CHROME_NINJA_DEV_BRIDGE_CERT
+const keyPath = process.env.CHROME_NINJA_DEV_BRIDGE_KEY
+const service = "@chrome-ninja/dev-bridge"
 const version = process.env.npm_package_version || "0.1.0"
 const startTime = Date.now()
-const executeTimeoutMs = Number(process.env.CHROME_NINJA_HMR_EXECUTE_TIMEOUT_MS || 15000)
+const executeTimeoutMs = Number(process.env.CHROME_NINJA_DEV_BRIDGE_EXECUTE_TIMEOUT_MS || 15000)
 const inactiveTimeoutMs = 60000
 const pingIntervalMs = 15000
 const maxBodyBytes = 5 * 1024 * 1024
@@ -24,7 +24,7 @@ const page = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>chrome ninja hmr</title>
+    <title>chrome ninja dev bridge</title>
     <style>
       :root { color-scheme: light; }
       body { margin: 0; background: #f7f4ed; color: #1f2933; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
@@ -44,7 +44,7 @@ const page = `<!doctype html>
   </head>
   <body>
     <main>
-      <h1>chrome ninja hmr <span class="muted" id="state">connecting</span></h1>
+      <h1>chrome ninja dev bridge <span class="muted" id="state">connecting</span></h1>
       <form id="execute-form">
         <div class="row">
           <label>target
@@ -122,8 +122,8 @@ server.on("upgrade", handleUpgrade)
 server.listen(port, host, () => {
   const protocol = server instanceof https.Server ? "https" : "http"
   const socketProtocol = server instanceof https.Server ? "wss" : "ws"
-  console.log(`hmr page: ${protocol}://${host}:${port}`)
-  console.log(`hmr socket: ${socketProtocol}://${host}:${port}`)
+  console.log(`dev bridge page: ${protocol}://${host}:${port}`)
+  console.log(`dev bridge socket: ${socketProtocol}://${host}:${port}`)
 })
 setInterval(pingBackgrounds, pingIntervalMs)
 
@@ -276,7 +276,7 @@ function createReloadMessage(body) {
 
   if (target === "extension") {
     return {
-      message: { type: "hmr:reload-extension", reason },
+      message: { type: "dev-bridge:reload-extension", reason },
       log: { target, reason }
     }
   }
@@ -289,7 +289,7 @@ function createReloadMessage(body) {
       return { error: "scopes must contain only popup, options, or content" }
 
     return {
-      message: { type: "hmr:reload-client", scopes, reason },
+      message: { type: "dev-bridge:reload-client", scopes, reason },
       log: { target, scopes, reason }
     }
   }
@@ -300,7 +300,7 @@ function createReloadMessage(body) {
       return { error: "matches must be an array of Chrome match patterns" }
 
     return {
-      message: { type: "hmr:reload-tabs", matches, reason },
+      message: { type: "dev-bridge:reload-tabs", matches, reason },
       log: { target, matches, reason }
     }
   }
@@ -415,23 +415,23 @@ function handleFrame(client, opcode, payload) {
 
 function handleSocketMessage(client, message) {
   switch (message.type) {
-    case "hmr:hello":
+    case "dev-bridge:hello":
       client.role = "background"
       client.sequence = ++backgroundSequence
       updateReportedClients(client, message.clients)
       logEvent("background:hello", { clients: client.clients })
       break
-    case "hmr:heartbeat":
+    case "dev-bridge:heartbeat":
       updateReportedClients(client, message.clients)
       break
-    case "hmr:pong":
+    case "dev-bridge:pong":
       updateReportedClients(client, message.clients)
       break
-    case "hmr:execute-js:result":
+    case "dev-bridge:execute-js:result":
       completeExecute(message)
       logEvent("execute:result", { requestId: message.requestId, ok: Boolean(message.ok), target: message.target })
       break
-    case "hmr:command:result":
+    case "dev-bridge:command:result":
       completeExecute(message)
       logEvent("command:result", {
         requestId: message.requestId,
@@ -448,7 +448,7 @@ function handleSocketMessage(client, message) {
 function executeInBackground(background, payload) {
   const requestId = crypto.randomUUID()
   const message = {
-    type: "hmr:execute-js",
+    type: "dev-bridge:execute-js",
     requestId,
     target: payload.target,
     code: payload.code,
@@ -475,7 +475,7 @@ function executeInBackground(background, payload) {
 function commandInBackground(background, payload) {
   const requestId = crypto.randomUUID()
   const message = {
-    type: "hmr:command",
+    type: "dev-bridge:command",
     requestId,
     target: payload.target,
     command: payload.command,
@@ -525,7 +525,7 @@ function pingBackgrounds() {
       client.socket.destroy()
       continue
     }
-    sendMessage(client, { type: "hmr:ping", sentAt: now })
+    sendMessage(client, { type: "dev-bridge:ping", sentAt: now })
   }
 }
 
@@ -674,7 +674,7 @@ function sendMessage(client, message) {
 }
 
 function logEvent(event, details = {}) {
-  const entry = { type: "hmr:log", time: new Date().toISOString(), event, ...details }
+  const entry = { type: "dev-bridge:log", time: new Date().toISOString(), event, ...details }
   const line = JSON.stringify(entry)
   console.log(line)
   const frame = writeFrame(line)

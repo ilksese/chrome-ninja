@@ -1,31 +1,31 @@
 import {
-  createEmptyHmrClientCounts,
-  getHmrErrorMessage,
-  HMR_CLIENT_PORT_PREFIX,
-  isHmrClientScope,
-  isHmrCommandName,
-  normalizeHmrResult,
-  type HmrClientCounts,
-  type HmrClientCommandResultMessage,
-  type HmrClientExecuteResultMessage,
-  type HmrClientScope,
-  type HmrCommandMessage,
-  type HmrCommandResultMessage,
-  type HmrExecuteJsMessage,
-  type HmrExecuteJsResultMessage,
-  type HmrHealthResponse,
-  type HmrJsonValue,
-  type HmrReloadClientMessage,
-  type HmrReloadTabsMessage,
-  type HmrServerMessage
+  createEmptyDevBridgeClientCounts,
+  getDevBridgeErrorMessage,
+  DEV_BRIDGE_CLIENT_PORT_PREFIX,
+  isDevBridgeClientScope,
+  isDevBridgeCommandName,
+  normalizeDevBridgeResult,
+  type DevBridgeClientCounts,
+  type DevBridgeClientCommandResultMessage,
+  type DevBridgeClientExecuteResultMessage,
+  type DevBridgeClientScope,
+  type DevBridgeCommandMessage,
+  type DevBridgeCommandResultMessage,
+  type DevBridgeExecuteJsMessage,
+  type DevBridgeExecuteJsResultMessage,
+  type DevBridgeHealthResponse,
+  type DevBridgeJsonValue,
+  type DevBridgeReloadClientMessage,
+  type DevBridgeReloadTabsMessage,
+  type DevBridgeServerMessage
 } from "../protocol"
-import { HMR_ENABLED, HMR_EXECUTE_TIMEOUT_MS, HMR_HEALTH_URLS } from "./config"
+import { DEV_BRIDGE_ENABLED, DEV_BRIDGE_EXECUTE_TIMEOUT_MS, DEV_BRIDGE_HEALTH_URLS } from "./config"
 
 type ClientExecutionResult = {
-  scope: HmrClientScope
+  scope: DevBridgeClientScope
   index: number
   ok: boolean
-  result?: HmrJsonValue
+  result?: DevBridgeJsonValue
   error?: string
 }
 
@@ -39,7 +39,7 @@ type SafeTab = {
   windowId: number
 }
 
-const clientPorts: Record<HmrClientScope, Set<chrome.runtime.Port>> = {
+const clientPorts: Record<DevBridgeClientScope, Set<chrome.runtime.Port>> = {
   popup: new Set(),
   content: new Set(),
   options: new Set()
@@ -50,9 +50,10 @@ let connecting = false
 let socket: WebSocket | undefined
 let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | undefined
 let heartbeatTimer: ReturnType<typeof globalThis.setInterval> | undefined
+let hasConnected = false
 
-export function connectHmrBackground() {
-  if (!HMR_ENABLED || started) return
+export function connectDevBridgeBackground() {
+  if (!DEV_BRIDGE_ENABLED || started) return
 
   started = true
   chrome.runtime.onConnect.addListener(handlePort)
@@ -72,8 +73,12 @@ async function connectSocket() {
 
     socket = new WebSocket(webSocketUrl)
     socket.addEventListener("open", () => {
-      sendSocketMessage({ type: "hmr:hello", scope: "background", clients: getClientCounts() })
+      sendSocketMessage({ type: "dev-bridge:hello", scope: "background", clients: getClientCounts() })
       startHeartbeat()
+      if (!hasConnected) {
+        hasConnected = true
+        void openPopup()
+      }
     })
     socket.addEventListener("message", (event) => {
       void handleSocketMessage(event.data)
@@ -92,14 +97,14 @@ async function connectSocket() {
 }
 
 async function resolveWebSocketUrl() {
-  for (const healthUrl of HMR_HEALTH_URLS) {
+  for (const healthUrl of DEV_BRIDGE_HEALTH_URLS) {
     try {
       const response = await fetch(healthUrl)
       if (!response.ok) continue
-      const body = (await response.json()) as HmrHealthResponse
+      const body = (await response.json()) as DevBridgeHealthResponse
       if (body.webSocketUrl) return body.webSocketUrl
     } catch {
-      // The local HMR service is optional during normal extension development.
+      // The local development bridge is optional during normal extension development.
     }
   }
 
@@ -109,42 +114,55 @@ async function resolveWebSocketUrl() {
 async function handleSocketMessage(data: unknown) {
   if (typeof data !== "string") return
 
-  let message: HmrServerMessage
+  let message: DevBridgeServerMessage
   try {
-    message = JSON.parse(data) as HmrServerMessage
+    message = JSON.parse(data) as DevBridgeServerMessage
   } catch {
     return
   }
 
   switch (message.type) {
-    case "hmr:ping":
-      sendSocketMessage({ type: "hmr:pong", clients: getClientCounts() })
+    case "dev-bridge:ping":
+      sendSocketMessage({ type: "dev-bridge:pong", clients: getClientCounts() })
       break
-    case "hmr:reload-extension":
+    case "dev-bridge:reload-extension":
       chrome.runtime.reload()
       break
-    case "hmr:reload-client":
+    case "dev-bridge:reload-client":
       reloadClients(message)
+      await openPopup()
       break
-    case "hmr:reload-tabs":
+    case "dev-bridge:reload-tabs":
       await reloadTabs(message)
+      await openPopup()
       break
-    case "hmr:execute-js":
+    case "dev-bridge:execute-js":
       await handleExecuteMessage(message)
       break
-    case "hmr:command":
+    case "dev-bridge:command":
       await handleCommandMessage(message)
       break
   }
 }
 
-function reloadClients(message: HmrReloadClientMessage) {
+async function openPopup() {
+  try {
+    const browserWindow = await chrome.windows.getLastFocused({ windowTypes: ["normal"] })
+    if (browserWindow.id === undefined) throw new Error("No normal Chrome window available")
+    if (!browserWindow.focused) await chrome.windows.update(browserWindow.id, { focused: true })
+    await chrome.action.openPopup({ windowId: browserWindow.id })
+  } catch (error) {
+    console.warn("Failed to open development popup", error)
+  }
+}
+
+function reloadClients(message: DevBridgeReloadClientMessage) {
   const scopes = getReloadClientScopes(message.scopes)
 
   for (const scope of scopes) {
     for (const port of clientPorts[scope]) {
       try {
-        port.postMessage({ type: "hmr:reload-client", scopes: [scope], reason: message.reason })
+        port.postMessage({ type: "dev-bridge:reload-client", scopes: [scope], reason: message.reason })
       } catch {
         clientPorts[scope].delete(port)
       }
@@ -154,7 +172,7 @@ function reloadClients(message: HmrReloadClientMessage) {
   sendHeartbeat()
 }
 
-async function reloadTabs(message: HmrReloadTabsMessage) {
+async function reloadTabs(message: DevBridgeReloadTabsMessage) {
   const matches = Array.isArray(message.matches) && message.matches.length > 0 ? message.matches : ["*://*/*"]
   const tabs = await chrome.tabs.query({})
 
@@ -165,15 +183,15 @@ async function reloadTabs(message: HmrReloadTabsMessage) {
       try {
         await chrome.tabs.reload(tab.id)
       } catch (error) {
-        console.warn("Failed to reload tab for HMR", error)
+        console.warn("Failed to reload tab for development", error)
       }
     })
   )
 }
 
-function getReloadClientScopes(scopes: HmrReloadClientMessage["scopes"]): HmrClientScope[] {
-  if (!Array.isArray(scopes) || scopes.length === 0) return Object.keys(clientPorts) as HmrClientScope[]
-  return Array.from(new Set(scopes)).filter(isHmrClientScope)
+function getReloadClientScopes(scopes: DevBridgeReloadClientMessage["scopes"]): DevBridgeClientScope[] {
+  if (!Array.isArray(scopes) || scopes.length === 0) return Object.keys(clientPorts) as DevBridgeClientScope[]
+  return Array.from(new Set(scopes)).filter(isDevBridgeClientScope)
 }
 
 function matchesAnyPattern(url: string, patterns: string[]) {
@@ -231,22 +249,22 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
-async function handleExecuteMessage(message: HmrExecuteJsMessage) {
+async function handleExecuteMessage(message: DevBridgeExecuteJsMessage) {
   try {
     const result = message.target === "page" ? await executeInPage(message) : await executeInClients(message)
     sendSocketMessage(result)
   } catch (error) {
     sendSocketMessage({
-      type: "hmr:execute-js:result",
+      type: "dev-bridge:execute-js:result",
       requestId: message.requestId,
       target: message.target,
       ok: false,
-      error: getHmrErrorMessage(error)
+      error: getDevBridgeErrorMessage(error)
     })
   }
 }
 
-async function executeInPage(message: HmrExecuteJsMessage): Promise<HmrExecuteJsResultMessage> {
+async function executeInPage(message: DevBridgeExecuteJsMessage): Promise<DevBridgeExecuteJsResultMessage> {
   const tabId = message.tabId ?? (await getActiveTabId())
   const results = await chrome.scripting.executeScript({
     target: { tabId, allFrames: Boolean(message.allFrames) },
@@ -258,11 +276,11 @@ async function executeInPage(message: HmrExecuteJsMessage): Promise<HmrExecuteJs
   })
 
   return {
-    type: "hmr:execute-js:result",
+    type: "dev-bridge:execute-js:result",
     requestId: message.requestId,
     target: message.target,
     ok: true,
-    result: normalizeHmrResult(results.map(({ frameId, result }) => ({ frameId, result })))
+    result: normalizeDevBridgeResult(results.map(({ frameId, result }) => ({ frameId, result })))
   }
 }
 
@@ -272,8 +290,8 @@ async function getActiveTabId() {
   return tab.id
 }
 
-async function executeInClients(message: HmrExecuteJsMessage): Promise<HmrExecuteJsResultMessage> {
-  if (!isHmrClientScope(message.target)) {
+async function executeInClients(message: DevBridgeExecuteJsMessage): Promise<DevBridgeExecuteJsResultMessage> {
+  if (!isDevBridgeClientScope(message.target)) {
     return createExecuteResult(message, false, undefined, `Unsupported target: ${message.target}`)
   }
 
@@ -283,7 +301,7 @@ async function executeInClients(message: HmrExecuteJsMessage): Promise<HmrExecut
   }
 
   const results = await Promise.all(
-    ports.map((port, index) => executeInPort(message.target as HmrClientScope, port, index, message))
+    ports.map((port, index) => executeInPort(message.target as DevBridgeClientScope, port, index, message))
   )
   const ok = results.every((result) => result.ok)
   const errors = results
@@ -293,22 +311,22 @@ async function executeInClients(message: HmrExecuteJsMessage): Promise<HmrExecut
   return createExecuteResult(
     message,
     ok,
-    normalizeHmrResult(results),
+    normalizeDevBridgeResult(results),
     errors.length > 0 ? errors.join("; ") : undefined
   )
 }
 
 function executeInPort(
-  scope: HmrClientScope,
+  scope: DevBridgeClientScope,
   port: chrome.runtime.Port,
   index: number,
-  message: HmrExecuteJsMessage
+  message: DevBridgeExecuteJsMessage
 ): Promise<ClientExecutionResult> {
   return new Promise((resolve) => {
     const timer = globalThis.setTimeout(() => {
       cleanup()
       resolve({ scope, index, ok: false, error: "Client execution timed out" })
-    }, HMR_EXECUTE_TIMEOUT_MS)
+    }, DEV_BRIDGE_EXECUTE_TIMEOUT_MS)
 
     const onMessage = (response: unknown) => {
       if (!isClientExecuteResult(response) || response.requestId !== message.requestId) return
@@ -331,19 +349,19 @@ function executeInPort(
       port.postMessage(message)
     } catch (error) {
       cleanup()
-      resolve({ scope, index, ok: false, error: getHmrErrorMessage(error) })
+      resolve({ scope, index, ok: false, error: getDevBridgeErrorMessage(error) })
     }
   })
 }
 
 function createExecuteResult(
-  message: HmrExecuteJsMessage,
+  message: DevBridgeExecuteJsMessage,
   ok: boolean,
-  result?: HmrJsonValue,
+  result?: DevBridgeJsonValue,
   error?: string
-): HmrExecuteJsResultMessage {
+): DevBridgeExecuteJsResultMessage {
   return {
-    type: "hmr:execute-js:result",
+    type: "dev-bridge:execute-js:result",
     requestId: message.requestId,
     target: message.target,
     ok,
@@ -352,25 +370,25 @@ function createExecuteResult(
   }
 }
 
-async function handleCommandMessage(message: HmrCommandMessage) {
+async function handleCommandMessage(message: DevBridgeCommandMessage) {
   try {
     const result =
       message.target === "background" ? await runBackgroundCommand(message) : await executeCommandInClients(message)
     sendSocketMessage(result)
   } catch (error) {
-    sendSocketMessage(createCommandResult(message, false, undefined, getHmrErrorMessage(error)))
+    sendSocketMessage(createCommandResult(message, false, undefined, getDevBridgeErrorMessage(error)))
   }
 }
 
-async function runBackgroundCommand(message: HmrCommandMessage): Promise<HmrCommandResultMessage> {
+async function runBackgroundCommand(message: DevBridgeCommandMessage): Promise<DevBridgeCommandResultMessage> {
   switch (message.command) {
     case "storage:get":
-      return createCommandResult(message, true, normalizeHmrResult(await storageGet(message.payload)))
+      return createCommandResult(message, true, normalizeDevBridgeResult(await storageGet(message.payload)))
     case "storage:set":
       await storageSet(message.payload)
       return createCommandResult(message, true, { ok: true })
     case "tabs:query":
-      return createCommandResult(message, true, normalizeHmrResult(await tabsQuery(message.payload)))
+      return createCommandResult(message, true, normalizeDevBridgeResult(await tabsQuery(message.payload)))
     case "tabs:reload":
       await tabsReload(message.payload)
       return createCommandResult(message, true, { ok: true })
@@ -379,8 +397,8 @@ async function runBackgroundCommand(message: HmrCommandMessage): Promise<HmrComm
   }
 }
 
-async function executeCommandInClients(message: HmrCommandMessage): Promise<HmrCommandResultMessage> {
-  if (!isHmrClientScope(message.target)) {
+async function executeCommandInClients(message: DevBridgeCommandMessage): Promise<DevBridgeCommandResultMessage> {
+  if (!isDevBridgeClientScope(message.target)) {
     return createCommandResult(message, false, undefined, `Unsupported target: ${message.target}`)
   }
 
@@ -390,7 +408,7 @@ async function executeCommandInClients(message: HmrCommandMessage): Promise<HmrC
   }
 
   const results = await Promise.all(
-    ports.map((port, index) => executeCommandInPort(message.target as HmrClientScope, port, index, message))
+    ports.map((port, index) => executeCommandInPort(message.target as DevBridgeClientScope, port, index, message))
   )
   const ok = results.every((result) => result.ok)
   const errors = results
@@ -400,22 +418,22 @@ async function executeCommandInClients(message: HmrCommandMessage): Promise<HmrC
   return createCommandResult(
     message,
     ok,
-    normalizeHmrResult(results),
+    normalizeDevBridgeResult(results),
     errors.length > 0 ? errors.join("; ") : undefined
   )
 }
 
 function executeCommandInPort(
-  scope: HmrClientScope,
+  scope: DevBridgeClientScope,
   port: chrome.runtime.Port,
   index: number,
-  message: HmrCommandMessage
+  message: DevBridgeCommandMessage
 ): Promise<ClientExecutionResult> {
   return new Promise((resolve) => {
     const timer = globalThis.setTimeout(() => {
       cleanup()
       resolve({ scope, index, ok: false, error: "Client command timed out" })
-    }, HMR_EXECUTE_TIMEOUT_MS)
+    }, DEV_BRIDGE_EXECUTE_TIMEOUT_MS)
 
     const onMessage = (response: unknown) => {
       if (!isClientCommandResult(response) || response.requestId !== message.requestId) return
@@ -438,19 +456,19 @@ function executeCommandInPort(
       port.postMessage(message)
     } catch (error) {
       cleanup()
-      resolve({ scope, index, ok: false, error: getHmrErrorMessage(error) })
+      resolve({ scope, index, ok: false, error: getDevBridgeErrorMessage(error) })
     }
   })
 }
 
 function createCommandResult(
-  message: HmrCommandMessage,
+  message: DevBridgeCommandMessage,
   ok: boolean,
-  result?: HmrJsonValue,
+  result?: DevBridgeJsonValue,
   error?: string
-): HmrCommandResultMessage {
+): DevBridgeCommandResultMessage {
   return {
-    type: "hmr:command:result",
+    type: "dev-bridge:command:result",
     requestId: message.requestId,
     target: message.target,
     command: message.command,
@@ -460,13 +478,13 @@ function createCommandResult(
   }
 }
 
-async function storageGet(payload: HmrJsonValue | undefined) {
+async function storageGet(payload: DevBridgeJsonValue | undefined) {
   const area = getStorageArea(getPayloadObject(payload).area)
   const keys = getPayloadObject(payload).keys as Parameters<chrome.storage.StorageArea["get"]>[0]
   return await area.get(keys)
 }
 
-async function storageSet(payload: HmrJsonValue | undefined) {
+async function storageSet(payload: DevBridgeJsonValue | undefined) {
   const body = getPayloadObject(payload)
   const area = getStorageArea(body.area)
   const value = body.value
@@ -481,7 +499,7 @@ async function storageSet(payload: HmrJsonValue | undefined) {
   await area.set(deepMergeRecords(current, value))
 }
 
-async function tabsQuery(payload: HmrJsonValue | undefined): Promise<SafeTab[]> {
+async function tabsQuery(payload: DevBridgeJsonValue | undefined): Promise<SafeTab[]> {
   const body = getPayloadObject(payload)
   const queryInfo: chrome.tabs.QueryInfo = {}
   if (typeof body.active === "boolean") queryInfo.active = body.active
@@ -492,7 +510,7 @@ async function tabsQuery(payload: HmrJsonValue | undefined): Promise<SafeTab[]> 
   return tabs.map(toSafeTab)
 }
 
-async function tabsReload(payload: HmrJsonValue | undefined) {
+async function tabsReload(payload: DevBridgeJsonValue | undefined) {
   const body = getPayloadObject(payload)
   const tabId = body.tabId === undefined ? await getActiveTabId() : body.tabId
   if (!Number.isInteger(tabId) || (tabId as number) < 0) throw new Error("payload.tabId must be a positive integer")
@@ -500,10 +518,10 @@ async function tabsReload(payload: HmrJsonValue | undefined) {
   await chrome.tabs.reload(tabId as number, { bypassCache: body.bypassCache === true })
 }
 
-function getPayloadObject(payload: HmrJsonValue | undefined): Record<string, HmrJsonValue | undefined> {
+function getPayloadObject(payload: DevBridgeJsonValue | undefined): Record<string, DevBridgeJsonValue | undefined> {
   if (payload === undefined) return {}
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("payload must be an object")
-  return payload as Record<string, HmrJsonValue | undefined>
+  return payload as Record<string, DevBridgeJsonValue | undefined>
 }
 
 function getStorageArea(value: unknown): chrome.storage.StorageArea {
@@ -516,15 +534,15 @@ function isStorageAreaName(value: unknown): value is StorageAreaName {
   return value === "local" || value === "sync" || value === "session"
 }
 
-function isPlainRecord(value: unknown): value is Record<string, HmrJsonValue> {
+function isPlainRecord(value: unknown): value is Record<string, DevBridgeJsonValue> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function deepMergeRecords(
   base: Record<string, unknown>,
-  patch: Record<string, HmrJsonValue>
-): Record<string, HmrJsonValue> {
-  const merged: Record<string, HmrJsonValue> = { ...(base as Record<string, HmrJsonValue>) }
+  patch: Record<string, DevBridgeJsonValue>
+): Record<string, DevBridgeJsonValue> {
+  const merged: Record<string, DevBridgeJsonValue> = { ...(base as Record<string, DevBridgeJsonValue>) }
 
   for (const [key, value] of Object.entries(patch)) {
     const current = merged[key]
@@ -564,7 +582,7 @@ function handlePort(port: chrome.runtime.Port) {
   port.onMessage.addListener(onMessage)
 }
 
-function registerPort(scope: HmrClientScope, port: chrome.runtime.Port) {
+function registerPort(scope: DevBridgeClientScope, port: chrome.runtime.Port) {
   clientPorts[scope].add(port)
   sendHeartbeat()
 
@@ -575,48 +593,48 @@ function registerPort(scope: HmrClientScope, port: chrome.runtime.Port) {
 }
 
 function getScopeFromPortName(name: string) {
-  if (!name.startsWith(HMR_CLIENT_PORT_PREFIX)) return undefined
-  const scope = name.slice(HMR_CLIENT_PORT_PREFIX.length)
-  return isHmrClientScope(scope) ? scope : undefined
+  if (!name.startsWith(DEV_BRIDGE_CLIENT_PORT_PREFIX)) return undefined
+  const scope = name.slice(DEV_BRIDGE_CLIENT_PORT_PREFIX.length)
+  return isDevBridgeClientScope(scope) ? scope : undefined
 }
 
 function getScopeFromHello(message: unknown) {
   if (!message || typeof message !== "object") return undefined
   const candidate = message as { type?: unknown; scope?: unknown }
-  return candidate.type === "hmr:client:hello" && isHmrClientScope(candidate.scope) ? candidate.scope : undefined
+  return candidate.type === "dev-bridge:client:hello" && isDevBridgeClientScope(candidate.scope) ? candidate.scope : undefined
 }
 
-function isClientExecuteResult(message: unknown): message is HmrClientExecuteResultMessage {
+function isClientExecuteResult(message: unknown): message is DevBridgeClientExecuteResultMessage {
   if (!message || typeof message !== "object") return false
-  const candidate = message as Partial<HmrClientExecuteResultMessage>
+  const candidate = message as Partial<DevBridgeClientExecuteResultMessage>
   return (
-    candidate.type === "hmr:client:execute-result" &&
+    candidate.type === "dev-bridge:client:execute-result" &&
     typeof candidate.requestId === "string" &&
     typeof candidate.ok === "boolean"
   )
 }
 
-function isClientCommandResult(message: unknown): message is HmrClientCommandResultMessage {
+function isClientCommandResult(message: unknown): message is DevBridgeClientCommandResultMessage {
   if (!message || typeof message !== "object") return false
-  const candidate = message as Partial<HmrClientCommandResultMessage>
+  const candidate = message as Partial<DevBridgeClientCommandResultMessage>
   return (
-    candidate.type === "hmr:client:command-result" &&
+    candidate.type === "dev-bridge:client:command-result" &&
     typeof candidate.requestId === "string" &&
     typeof candidate.ok === "boolean" &&
-    isHmrCommandName(candidate.command)
+    isDevBridgeCommandName(candidate.command)
   )
 }
 
-function getClientCounts(): HmrClientCounts {
-  const counts = createEmptyHmrClientCounts()
-  for (const scope of Object.keys(clientPorts) as HmrClientScope[]) {
+function getClientCounts(): DevBridgeClientCounts {
+  const counts = createEmptyDevBridgeClientCounts()
+  for (const scope of Object.keys(clientPorts) as DevBridgeClientScope[]) {
     counts[scope] = clientPorts[scope].size
   }
   return counts
 }
 
 function sendHeartbeat() {
-  sendSocketMessage({ type: "hmr:heartbeat", clients: getClientCounts() })
+  sendSocketMessage({ type: "dev-bridge:heartbeat", clients: getClientCounts() })
 }
 
 function startHeartbeat() {
