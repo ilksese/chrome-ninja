@@ -1,11 +1,24 @@
-import type { AppliedPreset, BrowserPreset, BrowserPresetRequest, BrowserPresetResponse } from "./types"
+import type {
+  AppliedPreset,
+  BrowserPreset,
+  BrowserPresetRequest,
+  BrowserPresetResponse,
+  UserAgentIdentity
+} from "./types"
 import { pageUnavailableReason } from "@/cookie-editor/types"
 import { BROWSER_PRESETS_KEY } from "./types"
-import { mobileConflictOf } from "./identity"
+import { getUaIdentity, mobileConflictOf } from "./identity"
 import { firstPresetError, validatePreset } from "./validation"
+import { resumeUserAgentRule, suspendUserAgentRule } from "@/user-agent"
 
 /** 正在模拟的标签页；只活在后台内存里，扩展重启即清空。 */
 const appliedByTab = new Map<number, AppliedPreset>()
+
+/**
+ * 已让全局 UA 改写让位的标签页。与 `appliedByTab` 分开记录，是因为两者的进出条件不同：
+ * 「不覆盖」UA 的预设只模拟视口，不碰全局规则；切到这类预设时必须归还上一次借走的让位。
+ */
+const suspendedTabs = new Set<number>()
 
 /** 扩展自己创建的标签页分组；用户自建的分组永远不在此集合内。 */
 const ownedGroupIds = new Set<number>()
@@ -83,13 +96,14 @@ async function inForeignGroup(tabId: number) {
 }
 
 /**
- * 退出模拟的唯一收尾路径：分离（Chromium 随分离清除全部模拟覆盖）→ 离开模拟分组
- * → 重新加载，最后清空内存映射。标题相同的用户自建分组不在 `ownedGroupIds` 内，不会被认领。
- * 用户移出分组触发的退出与页面/首页发起的退出共用这里。
+ * 退出模拟的唯一收尾路径：归还全局改写让位、分离调试会话（Chromium 随分离清除全部模拟覆盖）、
+ * 离开模拟分组，再重新加载，最后清空内存映射。标题相同的用户自建分组不在 `ownedGroupIds` 内，不会被认领。
+ * 用户移出分组触发的退出与预设页/首页发起的退出共用这里。
  */
 async function endSession(tabId: number) {
-  const applied = appliedByTab.get(tabId)
-  if (!applied) return
+  if (!appliedByTab.has(tabId)) return
+  // 让位是应用时借的，必须在这个统一出口归还，否则全局改写会一直处于移除状态。
+  if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
   appliedByTab.delete(tabId)
   await chrome.debugger.detach({ tabId }).catch(() => {})
   // ungroup 只处理仍在扩展分组内的标签页；分组空掉后 Chrome 会自行关闭。
@@ -100,22 +114,61 @@ async function endSession(tabId: number) {
 async function applyPreset(preset: BrowserPreset, tabId: number) {
   const reason = await unavailableReasonFor(tabId)
   if (reason) throw new Error(reason)
+  const identity = getUaIdentity(preset.userAgent)
   // 已在本扩展的调试会话里时只覆盖参数：重新 attach 会让浏览器重弹调试提示条。
   // 会话随标签页存续，因此只要 appliedByTab 有记录就认定会话仍可用；真掉线时 sendCommand 会失败。
   const reusing = appliedByTab.has(tabId)
   if (!reusing) await chrome.debugger.attach({ tabId }, "1.3")
   try {
     await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", preset.viewport)
+    if (identity) await applyUaOverride(tabId, identity)
+    const groupId = await joinPresetGroup(preset, tabId)
+    await syncGlobalUserAgentRule(tabId, Boolean(identity))
+    appliedByTab.set(tabId, { presetId: preset.id, groupId })
   } catch (error) {
-    // 复用中的会话失败可能只是参数非法，此时保留已有会话，退出模拟仍可正常分离。
-    if (!reusing) await chrome.debugger.detach({ tabId }).catch(() => {})
-    appliedByTab.delete(tabId)
+    // 复用中的会话失败可能只是参数非法：保留已有会话与映射，退出模拟仍可正常分离。
+    if (!reusing) {
+      // 失败时可能已让全局改写让位（入组成功后才切换），这里成对归还，避免规则一直处于移除状态。
+      if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
+      await chrome.debugger.detach({ tabId }).catch(() => {})
+      appliedByTab.delete(tabId)
+    }
     throw error
   }
-  const groupId = await joinPresetGroup(preset, tabId)
-  appliedByTab.set(tabId, { presetId: preset.id, groupId })
   // 全部覆盖下发完成后才 reload，避免先加载出未模拟的页面。
   await chrome.tabs.reload(tabId)
+}
+
+/**
+ * 让全局 UA 改写与标签页级模拟互斥：具体 UA 期间移除全局规则，否则同一请求会带上两套身份。
+ * 「不覆盖」的预设只模拟视口，全局规则的启用状态必须原样保留，因此这里只在状态真正切换时写规则。
+ * 原始选择由 `user-agent` 模块记住，退出时按用户最新的选择恢复（见 `resumeUserAgentRule`）。
+ */
+async function syncGlobalUserAgentRule(tabId: number, shouldSuspend: boolean) {
+  if (shouldSuspend === suspendedTabs.has(tabId)) return
+  if (shouldSuspend) {
+    suspendedTabs.add(tabId)
+    await suspendUserAgentRule()
+  } else {
+    suspendedTabs.delete(tabId)
+    await resumeUserAgentRule()
+  }
+}
+
+/**
+ * 下发完整 UA 身份。`platform` 与 `userAgentMetadata` 必须随 `userAgent` 一起给：
+ * 只改 UA 串会让 `navigator.platform`、`navigator.userAgentData` 与 `sec-ch-ua-*` 残留宿主值，
+ * 站点据此即可判定身份不一致（见 ADR 0003）。
+ * Safari 类身份刻意不下发 `userAgentMetadata`——这是 CDP 中「不发 client hints」的表达方式，
+ * 效果是全部 `sec-ch-ua-*` 请求头消失。
+ */
+async function applyUaOverride(tabId: number, identity: UserAgentIdentity) {
+  const { userAgent, platform, userAgentMetadata } = identity
+  await chrome.debugger.sendCommand(
+    { tabId },
+    "Emulation.setUserAgentOverride",
+    userAgentMetadata ? { userAgent, platform, userAgentMetadata } : { userAgent, platform }
+  )
 }
 
 async function loadPresets(): Promise<BrowserPreset[]> {
@@ -202,6 +255,7 @@ export function registerBrowserPresetBackground() {
         }
         if (message.type === "simulate-exit") {
           const tabId = await targetTabId(sender)
+          // 未在模拟时保持现状：没有覆盖可清，重新加载只会丢掉页面当前状态。
           await endSession(tabId)
           return { ok: true, tabId }
         }
