@@ -548,8 +548,8 @@ describe("会话终止归因", () => {
 
   const apply = (presetId: string) => request({ type: "apply", id: presetId }, popupSender)
 
-  const status = async () => {
-    const response = await request({ type: "status" }, popupSender)
+  const status = async (from = popupSender) => {
+    const response = await request({ type: "status" }, from)
     expect(response.ok, response.error).toBe(true)
     return response
   }
@@ -621,6 +621,130 @@ describe("会话终止归因", () => {
     // 主动 detach 会触发 onDetach，但映射已清空，不应再走一遍并多发一次 reload。
     await vi.waitFor(() => expect(commands.filter(([name]) => name === "reload")).toHaveLength(1))
     expect(commands.filter(([name]) => name === "detach")).toHaveLength(1)
+  })
+})
+
+describe("退出模拟", () => {
+  const create = async (patched: Partial<PresetDraft> = {}) => {
+    const created = await request({ type: "create", preset: draft(patched) })
+    expect(created.ok, created.error).toBe(true)
+    return created.preset!
+  }
+
+  const apply = (presetId: string) => request({ type: "apply", id: presetId }, popupSender)
+
+  const status = async (from = popupSender) => {
+    const response = await request({ type: "status" }, from)
+    expect(response.ok, response.error).toBe(true)
+    return response
+  }
+
+  it("退出模拟按分离、重新加载的顺序执行，并清除模拟状态", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    commands = []
+    const response = await request({ type: "simulate-exit" }, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    expect(commands).toEqual([
+      ["detach", { tabId: 7 }],
+      ["reload", { tabId: 7 }]
+    ])
+    expect(await status()).toMatchObject({ presetId: undefined })
+  })
+
+  it("退出模拟后标签页离开模拟分组，空分组随之关闭", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    await request({ type: "simulate-exit" }, popupSender)
+    expect(tabGroupIds.get(7)).toBe(-1)
+    expect(groupTitles()).toEqual([])
+  })
+
+  it("分组里还有其他标签页时只退出目标标签页，分组保留", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    await request({ type: "apply", id: preset.id }, secondTabSender)
+    await request({ type: "simulate-exit" }, popupSender)
+    expect(tabGroupIds.get(7)).toBe(-1)
+    expect(tabGroupIds.get(8)).toBeGreaterThanOrEqual(0)
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+    expect((await status(secondTabSender)).presetId).toBe(preset.id)
+  })
+
+  it("未在模拟时退出不做任何改动", async () => {
+    commands = []
+    const response = await request({ type: "simulate-exit" }, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    expect(commands).toEqual([])
+  })
+
+  it("网页可以对自己的标签页退出模拟", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await request({ type: "apply", id: preset.id }, secondTabSender)
+    commands = []
+    const response = await request({ type: "simulate-exit" }, secondTabSender)
+    expect(response.ok, response.error).toBe(true)
+    expect(commands).toEqual([
+      ["detach", { tabId: 8 }],
+      ["reload", { tabId: 8 }]
+    ])
+    expect(tabGroupIds.get(8)).toBe(-1)
+  })
+})
+
+describe("在已模拟的标签页上应用另一个预设", () => {
+  const create = async (patched: Partial<PresetDraft> = {}) => {
+    const created = await request({ type: "create", preset: draft(patched) })
+    expect(created.ok, created.error).toBe(true)
+    return created.preset!
+  }
+
+  it("复用现有调试会话覆盖参数并重新加载，不分离后再附加", async () => {
+    const first = await create({ name: "iPhone 15" })
+    const second = await create({
+      name: "Pixel 8",
+      userAgent: "chrome-android",
+      viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    })
+    await request({ type: "apply", id: first.id }, popupSender)
+    commands = []
+    const response = await request({ type: "apply", id: second.id }, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    // 全程没有 attach / detach：调试提示条不会因切换而重新出现；只有一次 reload。
+    expect(commands).not.toContainEqual(["attach", { tabId: 7 }])
+    expect(commands).not.toContainEqual(["detach", { tabId: 7 }])
+    expect(commands.filter(([name]) => name === "reload")).toHaveLength(1)
+    expect(commands.map(([name]) => name)).toContain("Emulation.setDeviceMetricsOverride")
+  })
+
+  it("切换后状态回报新预设，分组名同步为新预设", async () => {
+    const first = await create({ name: "iPhone 15" })
+    const second = await create({
+      name: "Pixel 8",
+      userAgent: "chrome-android",
+      viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    })
+    await request({ type: "apply", id: first.id }, popupSender)
+    await request({ type: "apply", id: second.id }, popupSender)
+    const response = await request({ type: "status" }, popupSender)
+    expect(response.presetId).toBe(second.id)
+    expect(groupTitles()).toEqual(["[ninja] Pixel 8"])
+  })
+
+  it("切换时下发的是新预设的设备度量", async () => {
+    const first = await create({ name: "iPhone 15" })
+    const second = await create({
+      name: "Pixel 8",
+      userAgent: "chrome-android",
+      viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    })
+    await request({ type: "apply", id: first.id }, popupSender)
+    commands = []
+    await request({ type: "apply", id: second.id }, popupSender)
+    expect(commands).toContainEqual([
+      "Emulation.setDeviceMetricsOverride",
+      { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    ])
   })
 })
 

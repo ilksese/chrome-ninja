@@ -49,7 +49,6 @@ export type BrowserPresetCommand =
   | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string; confirmConflict?: boolean }
   | { type: "delete"; id: string }
   | { type: "apply"; id: string; confirmGroupMove?: boolean }
-  /** 退出当前标签页的模拟。UI 入口由 #21 接入，后台路径先在此固定。 */
   | { type: "simulate-exit" }
   | { type: "status" }
 

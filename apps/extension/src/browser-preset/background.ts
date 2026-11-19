@@ -108,15 +108,17 @@ async function forgetTab(tabId: number) {
 }
 
 /**
- * 退出模拟的唯一入口：归还全局改写让位、分离调试会话、清空会话映射，再重新加载。
- * 浏览器会随分离清除全部模拟覆盖，因此不需要逐个撤销。
- * 用户移出分组与后续的退出命令（#21）都走这里。
+ * 退出模拟的唯一收尾路径：归还全局改写让位、分离调试会话（Chromium 随分离清除全部模拟覆盖）、
+ * 离开模拟分组，再重新加载，最后清空内存映射。标题相同的用户自建分组不在 `ownedGroupIds` 内，不会被认领。
+ * 用户移出分组触发的退出与预设页/首页发起的退出共用这里。
  */
 async function endSession(tabId: number) {
   if (!appliedByTab.has(tabId)) return
   // 让位是应用时借的，必须在这个统一出口归还，否则全局改写会一直处于移除状态。
   await forgetTab(tabId)
   await chrome.debugger.detach({ tabId }).catch(() => {})
+  // ungroup 只处理仍在扩展分组内的标签页；分组空掉后 Chrome 会自行关闭。
+  await chrome.tabs.ungroup(tabId).catch(() => {})
   await chrome.tabs.reload(tabId).catch(() => {})
 }
 
@@ -141,7 +143,10 @@ async function applyPreset(preset: BrowserPreset, tabId: number) {
   const reason = await unavailableReasonFor(tabId)
   if (reason) throw new Error(reason)
   const identity = getUaIdentity(preset.userAgent)
-  await chrome.debugger.attach({ tabId }, "1.3")
+  // 已在本扩展的调试会话里时只覆盖参数：重新 attach 会让浏览器重弹调试提示条。
+  // 会话随标签页存续，因此只要 appliedByTab 有记录就认定会话仍可用；真掉线时 sendCommand 会失败。
+  const reusing = appliedByTab.has(tabId)
+  if (!reusing) await chrome.debugger.attach({ tabId }, "1.3")
   try {
     await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", preset.viewport)
     if (identity) await applyUaOverride(tabId, identity)
@@ -149,10 +154,13 @@ async function applyPreset(preset: BrowserPreset, tabId: number) {
     await syncGlobalUserAgentRule(tabId, Boolean(identity))
     appliedByTab.set(tabId, { presetId: preset.id, groupId })
   } catch (error) {
-    // 失败时可能已让全局改写让位（入组成功后才切换），这里成对归还，避免规则一直处于移除状态。
-    if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
-    await chrome.debugger.detach({ tabId }).catch(() => {})
-    appliedByTab.delete(tabId)
+    // 复用中的会话失败可能只是参数非法：保留已有会话与映射，退出模拟仍可正常分离。
+    if (!reusing) {
+      // 失败时可能已让全局改写让位（入组成功后才切换），这里成对归还，避免规则一直处于移除状态。
+      if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
+      await chrome.debugger.detach({ tabId }).catch(() => {})
+      appliedByTab.delete(tabId)
+    }
     throw error
   }
   // 全部覆盖下发完成后才 reload，避免先加载出未模拟的页面。
@@ -282,12 +290,10 @@ export function registerBrowserPresetBackground() {
           await applyPreset(preset, tabId)
           return { ok: true, preset }
         }
-        // `simulate-exit` 与退出 UI 一起由 #21 接入；这里先固定退出路径，避免各处重写清理逻辑。
         if (message.type === "simulate-exit") {
           const tabId = await targetTabId(sender)
-          // `endSession` 只在确有会话时动作；这里补一次 reload，让已无会话的退出也刷新页面。
-          if (appliedByTab.has(tabId)) await endSession(tabId)
-          else await chrome.tabs.reload(tabId)
+          // 未在模拟时保持现状：没有覆盖可清，重新加载只会丢掉页面当前状态。
+          await endSession(tabId)
           return { ok: true, tabId }
         }
         throw new Error("未知的浏览器预设命令")

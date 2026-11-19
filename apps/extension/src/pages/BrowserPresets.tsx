@@ -83,6 +83,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [tabReason, setTabReason] = useState("")
+  const [simulatingId, setSimulatingId] = useState<string | undefined>(undefined)
   const [applyingId, setApplyingId] = useState("")
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
   const [conflict, setConflict] = useState<MobileConflict | null>(null)
@@ -112,20 +113,23 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   }, [refresh])
 
   // 应用前先问后台目标标签页能不能模拟，受限页面据此在点击前就禁用。
-  useEffect(() => {
-    void send({ type: "status" }).then(
-      (response) => {
-        if (!response?.ok) {
-          setTabReason(response?.error ?? "无法读取当前标签页")
-          return
-        }
-        setTabReason(response.unavailableReason ?? "")
-        // 被动终止的一次性提示由后台在读取后清空，这里只负责展示。
-        if (response.notice) setNotice(response.notice)
-      },
-      (err: unknown) => setTabReason(err instanceof Error ? err.message : "无法读取当前标签页")
-    )
+  // 同一次应答里带回正在模拟的预设与一次性提示，页面据此显示当前状态与退出模拟入口。
+  const refreshStatus = useCallback(async () => {
+    try {
+      const response = await send({ type: "status" })
+      if (!response?.ok) throw new Error(response?.error ?? "无法读取当前标签页")
+      setTabReason(response.unavailableReason ?? "")
+      setSimulatingId(response.presetId)
+      // 被动终止的一次性提示由后台在读取后清空，这里只负责展示。
+      if (response.notice) setNotice(response.notice)
+    } catch (err) {
+      setTabReason(err instanceof Error ? err.message : "无法读取当前标签页")
+    }
   }, [send])
+
+  useEffect(() => {
+    void refreshStatus()
+  }, [refreshStatus])
 
   useEffect(() => {
     if (form) requestAnimationFrame(() => nameRef.current?.focus())
@@ -219,6 +223,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     try {
       const response = await send({ type: "apply", id: preset.id })
       if (!response?.ok) throw new Error(response?.error ?? "应用预设失败")
+      setSimulatingId(preset.id)
       setNotice(`已应用「${preset.name}」`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "应用预设失败")
@@ -226,6 +231,23 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       setApplyingId("")
     }
   }
+
+  // 退出模拟不依赖 tabReason：受限原因只拦应用，退出随时可用。
+  const exitSimulation = async () => {
+    setError("")
+    setNotice("")
+    setApplyingId("")
+    try {
+      const response = await send({ type: "simulate-exit" })
+      if (!response?.ok) throw new Error(response?.error ?? "退出模拟失败")
+      setSimulatingId(undefined)
+      setNotice("已退出模拟")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "退出模拟失败")
+    }
+  }
+
+  const simulatingPreset = simulatingId ? presets.find((preset) => preset.id === simulatingId) : undefined
 
   const cancelDelete = () => {
     setPendingDelete(null)
@@ -256,6 +278,24 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
           浏览器预设通过 CDP 模拟单个标签页的 User-Agent 与
           viewport，应用时需要附加调试权限。应用后浏览器会显示一条调试提示条，这是浏览器的既有行为。
         </p>
+
+        {simulatingPreset ? (
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-3 py-2.5">
+            <span className="min-w-0 flex-1 text-xs leading-5 text-[#005bd1]">
+              正在模拟「{simulatingPreset.name}」
+            </span>
+            <button
+              className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff]"
+              type="button"
+              onClick={() => void exitSimulation()}>
+              退出模拟
+            </button>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-500">
+            当前没有模拟
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
