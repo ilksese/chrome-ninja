@@ -150,6 +150,88 @@ describe("浏览器预设后台协议", () => {
     expect(Object.keys(storage)).toEqual(["options", "browserPresets"])
   })
 
+  it("UA 身份声明的移动端与视口开关一致时直接保存，不要求确认", async () => {
+    const android = await request({
+      type: "create",
+      preset: draft({
+        name: "Pixel 8",
+        userAgent: "chrome-android",
+        viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+      })
+    })
+    expect(android.ok, android.error).toBe(true)
+    expect(android.needsConfirmation).toBeUndefined()
+
+    const desktop = await request({
+      type: "create",
+      preset: draft({ name: "桌面", userAgent: "chrome-desktop", viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false } })
+    })
+    expect(desktop.ok, desktop.error).toBe(true)
+    expect(desktop.needsConfirmation).toBeUndefined()
+    expect(await list()).toHaveLength(2)
+  })
+
+  it("不覆盖 UA 时不做移动端判定比对", async () => {
+    const created = await request({
+      type: "create",
+      preset: draft({ name: "只测视口", userAgent: "default", viewport: { width: 393, height: 852, deviceScaleFactor: 3, mobile: true } })
+    })
+    expect(created.ok, created.error).toBe(true)
+    expect(created.needsConfirmation).toBeUndefined()
+  })
+
+  it("移动端判定冲突时返回需要确认的信号，且不写入存储", async () => {
+    const response = await request({
+      type: "create",
+      preset: draft({ name: "冲突", userAgent: "chrome-android", viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false } })
+    })
+    expect(response.ok).toBe(false)
+    expect(response.needsConfirmation).toBe(true)
+    expect(response.conflict).toEqual({
+      userAgentMobile: true,
+      viewportMobile: false,
+      secChUaMobile: "?1",
+      layout: "desktop"
+    })
+    expect(await list()).toEqual([])
+    expect(storage.browserPresets).toBeUndefined()
+  })
+
+  it("确认风险后保存冲突配置，用户填写的值不被修正", async () => {
+    const response = await request({
+      type: "create",
+      confirmConflict: true,
+      preset: draft({ name: "冲突", userAgent: "chrome-android", viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false } })
+    })
+    expect(response.ok, response.error).toBe(true)
+    expect(response.preset!.viewport.mobile).toBe(false)
+    expect(response.preset!.userAgent).toBe("chrome-android")
+    expect(await list()).toEqual([response.preset])
+  })
+
+  it("更新时同样拦截未确认的冲突，取消即保持原值", async () => {
+    const created = await request({
+      type: "create",
+      preset: draft({ name: "Pixel", userAgent: "chrome-android", viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true } })
+    })
+    const conflicted = await request({
+      type: "update",
+      id: created.preset!.id,
+      preset: draft({ name: "Pixel", userAgent: "chrome-android", viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: false } })
+    })
+    expect(conflicted.needsConfirmation).toBe(true)
+    expect((await list())[0].viewport.mobile).toBe(true)
+
+    const confirmed = await request({
+      type: "update",
+      id: created.preset!.id,
+      confirmConflict: true,
+      preset: draft({ name: "Pixel", userAgent: "chrome-android", viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: false } })
+    })
+    expect(confirmed.ok, confirmed.error).toBe(true)
+    expect((await list())[0].viewport.mobile).toBe(false)
+  })
+
   it("忽略不属于浏览器预设的消息目标", () => {
     expect(receive({ target: "cookie-editor", type: "list" }, sender as chrome.runtime.MessageSender, vi.fn())).toBe(
       false
