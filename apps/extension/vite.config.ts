@@ -6,7 +6,7 @@ import { defineConfig } from "vite"
 import svgr from "vite-plugin-svgr"
 import manifest from "./manifest.config"
 
-const isHmrDevBuild = process.env.VITE_CHROME_NINJA_HMR === "true"
+const isDevBridgeBuild = process.env.VITE_CHROME_NINJA_DEV_BRIDGE === "true"
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -14,6 +14,13 @@ export default defineConfig({
     preact(),
     tailwindcss(),
     svgr(),
+    isDevBridgeBuild && {
+      name: "dev-bridge:rebuild",
+      apply: "build",
+      options(options) {
+        return { ...options, cache: false }
+      }
+    },
     crx({
       manifest,
       contentScripts: {
@@ -22,7 +29,7 @@ export default defineConfig({
     })
   ],
   build: {
-    emptyOutDir: !isHmrDevBuild,
+    emptyOutDir: !isDevBridgeBuild,
     modulePreload: false,
     rollupOptions: {
       input: {

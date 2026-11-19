@@ -6,4 +6,4 @@
 
 ## Checks
 
-- Shared packages have no package-level scripts; use root `pnpm typecheck` after changing exported types.
+- Shared source packages have no build scripts; use root `pnpm typecheck` after changing exported types. The local `dev-bridge` service has its own `dev` and `start` scripts.

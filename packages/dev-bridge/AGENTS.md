@@ -2,20 +2,21 @@
 
 ## Package Scope
 
-- This package is the local HMR and debug service for the Chrome Ninja extension.
-- The package name is `@chrome-ninja/hmr`; it currently lives under `packages/hmr` in the workspace.
+- This package is the local reload and debug bridge for the Chrome Ninja extension.
+- The package name is `@chrome-ninja/dev-bridge`; it lives under `packages/dev-bridge` in the workspace.
 - It is a Node ESM service with the entry point `src/server/index.mjs`.
-- Extension-side HMR bridge code is exported from `@chrome-ninja/hmr/client`.
-- Shared HMR message types and constants are exported from `@chrome-ninja/hmr/protocol`.
+- Extension-side bridge code is exported from `@chrome-ninja/dev-bridge/client`.
+- Shared message types and constants are exported from `@chrome-ninja/dev-bridge/protocol`.
+- Development backgrounds focus the last focused normal Chrome window and open its action popup on their first service connection and after client or tab reloads. Chrome requires an active target window; focus it before passing its ID to `openPopup`. Reconnecting the same background does not open it again.
 - It is for local development only. Do not design it as a production remote-control surface.
 
 ## Commands
 
-- Start the service with `pnpm --filter @chrome-ninja/hmr dev`.
+- Start the service with `pnpm --filter @chrome-ninja/dev-bridge dev`.
 - There is no package-local lint, typecheck, or test script at the moment.
-- Use `node --check packages/hmr/src/server/index.mjs` from the repo root for a basic syntax check after editing the service.
+- Use `node --check packages/dev-bridge/src/server/index.mjs` from the repo root for a basic syntax check after editing the service.
 - Extension-side protocol changes should be checked with `pnpm --filter @chrome-ninja/extension lint`.
-- `pnpm --filter @chrome-ninja/extension typecheck` and `build` may currently fail on the repo's existing Vite 5/6 `PluginOption` type conflict in `apps/extension/vite.config.ts`; report that separately from HMR changes.
+- Check extension-side changes with `pnpm --filter @chrome-ninja/extension typecheck` and `pnpm --filter @chrome-ninja/extension build`.
 
 ## Debug API Rules
 
@@ -30,7 +31,7 @@
 
 ## Command API Shape
 
-- `POST /command` sends `hmr:command` through the connected background service worker.
+- `POST /command` sends `dev-bridge:command` through the connected background service worker.
 - Supported targets are `background`, `content`, `popup`, and `options`.
 - Current supported commands are `storage:get`, `storage:set`, `tabs:query`, `tabs:reload`, and `dom:query`.
 - `storage:get`, `storage:set`, `tabs:query`, and `tabs:reload` execute in the background service worker.

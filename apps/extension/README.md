@@ -7,7 +7,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 - `src/popup.tsx`：popup UI 入口，挂载 Preact、Jotai 和 `MemoryRouter`。
 - `src/App.tsx`：消费 `vite-plugin-pages` 生成的 `~react-pages` 路由。
 - `src/background/index.ts`：MV3 background service worker。
-- `src/content-script/index.ts`：通用网页 HMR/调试连接入口，不包含站点功能逻辑。
+- `src/content-script/index.ts`：通用网页 dev-bridge 连接入口，不包含站点功能逻辑。
 - 元素复制、翻译、视频嗅探、录制和网络监视器的 content script 在 `manifest.config.ts` 中分别注册。
 - `src/cookie-editor/content.ts`：按需注入 Cookie 编辑器的网页内面板，Popup 只提供入口。
 - `manifest.config.ts`：由 `@crxjs/vite-plugin` 使用的 manifest 配置。
@@ -87,6 +87,19 @@ pnpm --filter @chrome-ninja/extension build
 扩展测试在根目录运行 `pnpm test --project extension --project extension-ui`。
 
 根级 `pnpm dev` 和 `pnpm build` 等价于 extension 的 dev/build。
+
+## 开发自动刷新
+
+`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；之后构建完成会自动刷新相关界面或整个扩展。
+
+构建使用 CRXJS 2.7.1。开发模式关闭 Rollup 构建缓存，让每轮构建重新生成 Manifest 和动态 Content Script 的文件引用，避免增量构建沿用失效引用而中断刷新；生产构建保留默认缓存设置。
+
+- Popup、Options 的独立入口变化刷新对应界面，公共页面和组件变化刷新两者。
+- Content Script 和录制器、网络监控、视频嗅探变化刷新匹配的网页；Boss 专用脚本仅刷新匹配的 Boss 页面。
+- 后台、Store、Manifest、资源或未分类变化重载整个扩展。
+- 后台首次连接开发桥时，将最近聚焦的普通 Chrome 窗口切到前台，再打开工具栏 Popup；界面或网页刷新后也自动打开，整扩展重载后由新后台连接时打开。同一后台断线重连不会单独触发打开。
+
+自动刷新会重置运行时界面状态。Popup 失焦时仍按 Chrome 默认行为关闭，浏览器拒绝打开时在后台控制台记录错误。普通 `pnpm build` 不启用开发连接和自动打开。
 
 ## 本地加载扩展
 
