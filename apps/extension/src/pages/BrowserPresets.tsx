@@ -76,6 +76,9 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [touched, setTouched] = useState<PresetField[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
+  const [tabReason, setTabReason] = useState("")
+  const [applyingId, setApplyingId] = useState("")
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
@@ -101,6 +104,17 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // 应用前先问后台目标标签页能不能模拟，受限页面据此在点击前就禁用。
+  useEffect(() => {
+    void send({ type: "status" }).then(
+      (response) => {
+        if (response?.ok) setTabReason(response.unavailableReason ?? "")
+        else setTabReason(response?.error ?? "无法读取当前标签页")
+      },
+      (err: unknown) => setTabReason(err instanceof Error ? err.message : "无法读取当前标签页")
+    )
+  }, [send])
 
   useEffect(() => {
     if (form) requestAnimationFrame(() => nameRef.current?.focus())
@@ -174,6 +188,22 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     }
   }
 
+  const applyPreset = async (preset: BrowserPreset) => {
+    if (tabReason) return
+    setError("")
+    setNotice("")
+    setApplyingId(preset.id)
+    try {
+      const response = await send({ type: "apply", id: preset.id })
+      if (!response?.ok) throw new Error(response?.error ?? "应用预设失败")
+      setNotice(`已应用「${preset.name}」`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "应用预设失败")
+    } finally {
+      setApplyingId("")
+    }
+  }
+
   const cancelDelete = () => {
     setPendingDelete(null)
     requestAnimationFrame(() => deleteTriggerRef.current?.focus())
@@ -207,6 +237,20 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
         {error && (
           <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
             {error}
+          </p>
+        )}
+
+        {notice && (
+          <p
+            role="status"
+            className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+            {notice}
+          </p>
+        )}
+
+        {tabReason && !form && (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+            当前标签页无法模拟：{tabReason}
           </p>
         )}
       </section>
@@ -385,6 +429,15 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                       {preset.viewport.mobile ? "移动端" : "桌面端"}
                     </span>
                   </span>
+                  <button
+                    className="shrink-0 rounded-lg bg-[#0c5fb8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#094c93] disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    aria-label={`应用 ${preset.name}`}
+                    title={tabReason || undefined}
+                    disabled={!!tabReason || applyingId === preset.id}
+                    onClick={() => void applyPreset(preset)}>
+                    {applyingId === preset.id ? "应用中" : "应用"}
+                  </button>
                   <button
                     className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
                     type="button"

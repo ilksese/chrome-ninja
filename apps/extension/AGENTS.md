@@ -43,8 +43,11 @@
 
 ## Browser presets
 
-- `src/browser-preset/background.ts` owns the `browser-preset` message commands (`list`, `create`, `update`, `delete`) over the dedicated `browserPresets` key in `chrome.storage.local`; presets stay separate from `options`.
+- `src/browser-preset/background.ts` owns the `browser-preset` message commands (`list`, `create`, `update`, `delete`, `apply`, `status`) over the dedicated `browserPresets` key in `chrome.storage.local`; presets stay separate from `options`.
 - Records are `BrowserPreset` from `src/browser-preset/types.ts`: a stable `id`, a unique `name`, a `userAgent` value reused from `USER_AGENT_OPTIONS` (`default` means no UA override), and a `viewport` of width, height, device scale factor, and `mobile`.
+- `apply` resolves the target tab from the sender (top frame; extension pages use the active tab), then runs `chrome.debugger.attach` → `Emulation.setDeviceMetricsOverride` → `chrome.tabs.reload`, awaiting every call before the reload. Device metrics stay scoped to that tab across reloads, in-page navigation, and SPA route changes; no `webNavigation` listener re-issues commands and new tabs are untouched.
+- `status` returns the same target tab plus `unavailableReason`, derived from `pageUnavailableReason()` in `src/cookie-editor/types.ts` and an attached `chrome.debugger` target. `apply` reuses that reasoning and refuses before attaching. The page disables the apply button and shows the reason while it is non-empty, so restriction and DevTools takeover are handled before the click.
+- `appliedByTab` is a module-level `Map<tabId, { presetId }>` in the background; it is memory only and clears on extension restart.
 - `src/browser-preset/validation.ts` is the single source of name uniqueness (trimmed, case-insensitive), the 200–4000 width/height bounds, and the 1–4 device scale factor. The background and the page share it, so the first error text matches in both.
 - `src/browser-preset/devices.ts` holds the device tiers. They only fill the viewport fields and are never stored.
 - `/browser-presets` renders `src/pages/BrowserPresets.tsx` from the Home card in both Popup and Options. First-time copy explains that applying a preset needs the debugger permission.

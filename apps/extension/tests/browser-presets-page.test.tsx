@@ -11,6 +11,8 @@ type Preset = {
 
 let presets: Preset[] = []
 let sendMessage = vi.fn()
+let unavailableReason = ""
+let applyResult: { ok: boolean; error?: string } | undefined
 
 const preset = (patch: Partial<Preset> = {}): Preset => ({
   id: "preset-1",
@@ -22,6 +24,8 @@ const preset = (patch: Partial<Preset> = {}): Preset => ({
 
 const reply = (command: { type: string; [key: string]: unknown }) => {
   if (command.type === "list") return { ok: true, presets: structuredClone(presets) }
+  if (command.type === "status") return { ok: true, tabId: 7, unavailableReason }
+  if (command.type === "apply") return applyResult ?? { ok: true }
   if (command.type === "create" || command.type === "update") {
     const draft = command.preset as Omit<Preset, "id">
     const id = (command.id as string | undefined) ?? `preset-${presets.length + 1}`
@@ -43,6 +47,8 @@ const commands = (type: string) =>
 
 beforeEach(() => {
   presets = []
+  unavailableReason = ""
+  applyResult = undefined
   sendMessage = vi.fn(async (command: { type: string; [key: string]: unknown }) => reply(command))
   vi.stubGlobal("chrome", {
     runtime: { sendMessage },
@@ -131,6 +137,33 @@ describe("浏览器预设页", () => {
     fireEvent.click(await screen.findByRole("button", { name: "删除 iPhone 15" }))
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }))
     await waitFor(() => expect(screen.queryByText("iPhone 15")).not.toBeInTheDocument())
+  })
+
+  it("应用预设成功后给出可见反馈", async () => {
+    presets = [preset()]
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("已应用「iPhone 15」")
+    expect(commands("apply")).toMatchObject([{ target: "browser-preset", type: "apply", id: "preset-1" }])
+  })
+
+  it("受限页面上禁用在点击前应用并说明原因", async () => {
+    presets = [preset()]
+    unavailableReason = "Chrome 网上应用店禁止扩展注入"
+    renderPage()
+    const button = await screen.findByRole("button", { name: "应用 iPhone 15" })
+    expect(button).toBeDisabled()
+    expect(screen.getByText(/Chrome 网上应用店禁止扩展注入/)).toBeInTheDocument()
+    fireEvent.click(button)
+    expect(commands("apply")).toHaveLength(0)
+  })
+
+  it("应用失败时展示可读原因", async () => {
+    presets = [preset()]
+    applyResult = { ok: false, error: "该标签页已打开 DevTools，无法模拟" }
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("该标签页已打开 DevTools，无法模拟")
   })
 
   it("后台返回错误时展示原因", async () => {
