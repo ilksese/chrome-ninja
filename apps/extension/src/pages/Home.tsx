@@ -156,6 +156,8 @@ const Home = ({ layout }: HomeProps) => {
   const [isBossApplying, setIsBossApplying] = useState(false)
   const [isRecorderApplying, setIsRecorderApplying] = useState(false)
   const [error, setError] = useState("")
+  const [simulatingPreset, setSimulatingPreset] = useState<{ id: string; name: string } | undefined>(undefined)
+  const [isSimulationExiting, setIsSimulationExiting] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const loginStateTriggerRef = useRef<HTMLButtonElement>(null)
   const qrTriggerRef = useRef<HTMLButtonElement>(null)
@@ -180,6 +182,48 @@ const Home = ({ layout }: HomeProps) => {
   const dismissIntro = () => {
     setHasSeenIntro(true)
     chrome.storage?.local.set({ [HOME_INTRO_STORAGE_KEY]: true }, () => {})
+  }
+
+  // 首页卡片只读当前标签页的模拟状态：状态由后台内存决定，预设名从列表里反查。
+  const refreshSimulation = async () => {
+    try {
+      const status = (await chrome.runtime.sendMessage({ target: "browser-preset", type: "status" })) as
+        | { ok: boolean; presetId?: string }
+        | undefined
+      const presetId = status?.ok ? status.presetId : undefined
+      if (!presetId) {
+        setSimulatingPreset(undefined)
+        return
+      }
+      const list = (await chrome.runtime.sendMessage({ target: "browser-preset", type: "list" })) as
+        | { ok: boolean; presets?: { id: string; name: string }[] }
+        | undefined
+      // 预设可能在模拟中被删除，此时只能回退到 id，不能编造名称。
+      const name = list?.presets?.find((preset) => preset.id === presetId)?.name ?? presetId
+      setSimulatingPreset({ id: presetId, name })
+    } catch {
+      setSimulatingPreset(undefined)
+    }
+  }
+
+  useEffect(() => {
+    void refreshSimulation()
+  }, [])
+
+  const exitSimulation = async () => {
+    setIsSimulationExiting(true)
+    setError("")
+    try {
+      const response = (await chrome.runtime.sendMessage({ target: "browser-preset", type: "simulate-exit" })) as
+        | { ok: boolean; error?: string }
+        | undefined
+      if (!response?.ok) throw new Error(response?.error ?? "退出模拟失败")
+      setSimulatingPreset(undefined)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "退出模拟失败")
+    } finally {
+      setIsSimulationExiting(false)
+    }
   }
 
   const closeUserAgentDialog = () => {
@@ -395,7 +439,8 @@ const Home = ({ layout }: HomeProps) => {
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">运行中</span>
           </div>
 
-          <div className={cn("grid gap-3", isOptions ? "grid-cols-[minmax(0,1fr)_160px]" : "") }>
+          {/* 隐式 auto 列的下限是子项的 min-content，卡片的 truncate 文本会把它顶出容器并裁掉右缘。 */}
+          <div className={cn("grid gap-3", isOptions ? "grid-cols-[minmax(0,1fr)_160px]" : "grid-cols-[minmax(0,1fr)]") }>
             <button
               ref={triggerRef}
               className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60"
@@ -471,6 +516,35 @@ const Home = ({ layout }: HomeProps) => {
             </button>
 
             {!isOptions && <NetworkMonitorToggle />}
+
+            <button
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
+              type="button"
+              aria-label="浏览器预设"
+              onClick={() => navigate("/browser-presets")}>
+              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">BP</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-950">浏览器预设</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">为单个标签页切换 User-Agent 与 viewport</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500" role="status">
+                  {simulatingPreset ? `正在模拟「${simulatingPreset.name}」` : "当前没有模拟"}
+                </span>
+              </span>
+              <span className="text-2xl leading-none text-[#005bd1]">›</span>
+            </button>
+
+            {/* 退出模拟放在卡片外：按钮内不能再嵌按钮，否则浏览器会把它提到外面并打乱布局。 */}
+            {simulatingPreset && (
+              <div className="flex items-center justify-end gap-3 rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-4 py-2.5">
+                <button
+                  className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff] disabled:opacity-60"
+                  type="button"
+                  disabled={isSimulationExiting}
+                  onClick={() => void exitSimulation()}>
+                  {isSimulationExiting ? "退出中" : "退出模拟"}
+                </button>
+              </div>
+            )}
 
             <button
               ref={translateTriggerRef}
