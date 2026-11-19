@@ -10,6 +10,9 @@ const appliedByTab = new Map<number, AppliedPreset>()
 /** 扩展自己创建的标签页分组；用户自建的分组永远不在此集合内。 */
 const ownedGroupIds = new Set<number>()
 
+/** 被动终止后待展示的一次性提示；只活在后台内存里，被读取即清空。 */
+const notices = new Map<number, string>()
+
 const GROUP_TITLE_PREFIX = "[ninja] "
 
 const groupTitleOf = (preset: BrowserPreset) => `${GROUP_TITLE_PREFIX}${preset.name}`
@@ -90,6 +93,23 @@ async function endSession(tabId: number) {
   await chrome.tabs.reload(tabId).catch(() => {})
 }
 
+/** 分离事件不带来源，只能按标签页是否还在反查归因。 */
+async function attributeDetach(source: chrome.debugger.Debuggee, reason: string) {
+  const tabId = source.tabId
+  if (tabId === undefined || !appliedByTab.has(tabId)) return
+  // 标签页已关闭：映射随标签页失效，静默清理，不留任何提示。
+  const tabExists = await chrome.tabs.get(tabId).then(
+    () => true,
+    () => false
+  )
+  if (!tabExists) {
+    appliedByTab.delete(tabId)
+    return
+  }
+  notices.set(tabId, reason === "canceled_by_user" ? "模拟已取消" : "DevTools 已接管，模拟已取消")
+  await endSession(tabId)
+}
+
 async function applyPreset(preset: BrowserPreset, tabId: number) {
   const reason = await unavailableReasonFor(tabId)
   if (reason) throw new Error(reason)
@@ -124,6 +144,11 @@ export function registerBrowserPresetBackground() {
     const applied = appliedByTab.get(tabId)
     if (!applied || changeInfo.groupId === applied.groupId) return
     void endSession(tabId)
+  })
+
+  // DevTools 抢占、浏览器提示条取消与标签页关闭都会走到这里，来源需要按标签页反查。
+  chrome.debugger.onDetach.addListener((source, reason) => {
+    void attributeDetach(source, reason)
   })
 
   chrome.runtime.onMessage.addListener(
@@ -172,11 +197,15 @@ export function registerBrowserPresetBackground() {
         }
         if (message.type === "status") {
           const tabId = await targetTabId(sender)
+          const notice = notices.get(tabId)
+          // 一次性提示：读走即清，避免每次查状态都重复弹。
+          notices.delete(tabId)
           return {
             ok: true,
             tabId,
             unavailableReason: await unavailableReasonFor(tabId),
-            presetId: appliedByTab.get(tabId)?.presetId
+            presetId: appliedByTab.get(tabId)?.presetId,
+            notice
           }
         }
         if (message.type === "apply") {

@@ -12,6 +12,7 @@ type Preset = {
 let presets: Preset[] = []
 let sendMessage = vi.fn()
 let unavailableReason = ""
+let statusNotice: string | undefined
 let applyResult: { ok: boolean; error?: string } | undefined
 
 const preset = (patch: Partial<Preset> = {}): Preset => ({
@@ -36,7 +37,7 @@ const conflictOf = (draft: Omit<Preset, "id">) => {
 
 const reply = (command: { type: string; [key: string]: unknown }) => {
   if (command.type === "list") return { ok: true, presets: structuredClone(presets) }
-  if (command.type === "status") return { ok: true, tabId: 7, unavailableReason }
+  if (command.type === "status") return { ok: true, tabId: 7, unavailableReason, notice: statusNotice }
   if (command.type === "apply") return applyResult ?? { ok: true }
   if (command.type === "create" || command.type === "update") {
     const draft = command.preset as Omit<Preset, "id">
@@ -62,6 +63,7 @@ const commands = (type: string) =>
 beforeEach(() => {
   presets = []
   unavailableReason = ""
+  statusNotice = undefined
   applyResult = undefined
   sendMessage = vi.fn(async (command: { type: string; [key: string]: unknown }) => reply(command))
   vi.stubGlobal("chrome", {
@@ -239,8 +241,7 @@ describe("浏览器预设页", () => {
     expect(presets).toEqual([])
   })
 
-  it("不冲突时保存不弹确认框", async () => {
-    renderPage()
+  it("不冲突时保存不弹确认框", async () => {    renderPage()
     fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
     fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "Pixel 调试" } })
     fireEvent.change(screen.getByLabelText("User-Agent"), { target: { value: "chrome-android" } })
@@ -249,5 +250,17 @@ describe("浏览器预设页", () => {
 
     expect(await screen.findByText("Pixel 调试")).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("会话被 DevTools 抢占后显示已取消的提示", async () => {
+    statusNotice = "DevTools 已接管，模拟已取消"
+    renderPage()
+    expect(await screen.findByRole("status")).toHaveTextContent("DevTools 已接管，模拟已取消")
+  })
+
+  it("没有任何被动终止时不显示提示", async () => {
+    renderPage()
+    await screen.findByText(/尚未创建浏览器预设/)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 })

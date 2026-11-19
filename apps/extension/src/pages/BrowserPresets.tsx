@@ -115,8 +115,13 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   useEffect(() => {
     void send({ type: "status" }).then(
       (response) => {
-        if (response?.ok) setTabReason(response.unavailableReason ?? "")
-        else setTabReason(response?.error ?? "无法读取当前标签页")
+        if (!response?.ok) {
+          setTabReason(response?.error ?? "无法读取当前标签页")
+          return
+        }
+        setTabReason(response.unavailableReason ?? "")
+        // 被动终止的一次性提示由后台在读取后清空，这里只负责展示。
+        if (response.notice) setNotice(response.notice)
       },
       (err: unknown) => setTabReason(err instanceof Error ? err.message : "无法读取当前标签页")
     )
