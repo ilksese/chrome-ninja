@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/preact"
 import BrowserPresets from "../src/pages/BrowserPresets"
+import { mobileConflictOf } from "../src/browser-preset/identity"
 
 type Preset = {
   id: string
@@ -16,6 +17,8 @@ let statusNotice: string | undefined
 let simulatingId: string | undefined
 let exitResult: { ok: boolean; error?: string } | undefined
 let applyResult: { ok: boolean; error?: string } | undefined
+/** 标签页已在用户自建分组里：首次应用要求确认，带 confirmGroupMove 才真正执行。 */
+let inForeignGroup = false
 /** 后台按 appliedByTab 现算的使用数量；页面只读不猜。 */
 let usage: Record<string, number> = {}
 
@@ -26,18 +29,6 @@ const preset = (patch: Partial<Preset> = {}): Preset => ({
   viewport: { width: 393, height: 852, deviceScaleFactor: 3, mobile: true },
   ...patch
 })
-
-// 只模拟两种已知冲突：Chrome Android（mobile 身份）配桌面布局，Chrome 桌面配移动端布局。
-const conflictOf = (draft: Omit<Preset, "id">) => {
-  const userAgentMobile = draft.userAgent === "chrome-android" ? true : draft.userAgent === "chrome-desktop" ? false : null
-  if (userAgentMobile === null || userAgentMobile === draft.viewport.mobile) return undefined
-  return {
-    userAgentMobile,
-    viewportMobile: draft.viewport.mobile,
-    secChUaMobile: userAgentMobile ? "?1" : "?0",
-    layout: draft.viewport.mobile ? "mobile" : "desktop"
-  }
-}
 
 const reply = (command: { type: string; [key: string]: unknown }) => {
   if (command.type === "list") return { ok: true, presets: structuredClone(presets), usage: { ...usage } }
@@ -57,6 +48,9 @@ const reply = (command: { type: string; [key: string]: unknown }) => {
     }
   if (command.type === "apply") {
     if (applyResult && !applyResult.ok) return applyResult
+    // 与后台一致：自建分组里的标签页先要求确认，确认前不做任何改动。
+    if (inForeignGroup && command.confirmGroupMove !== true) return { ok: false, needsGroupMoveConfirmation: true }
+    inForeignGroup = false
     // 与后台一致：应用让该预设的使用数量加一，页面随后刷新即可看到锁定态。
     usage = { ...usage, [command.id as string]: (usage[command.id as string] ?? 0) + 1 }
     return { ok: true }
@@ -68,7 +62,8 @@ const reply = (command: { type: string; [key: string]: unknown }) => {
   }
   if (command.type === "create" || command.type === "update") {
     const draft = command.preset as Omit<Preset, "id">
-    const conflict = conflictOf(draft)
+    // 与后台共用同一份判定，测试不会和实现各写一套规则而悄悄脱节。
+    const conflict = mobileConflictOf(draft.userAgent as Parameters<typeof mobileConflictOf>[0], draft.viewport.mobile)
     if (conflict && command.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
     const id = (command.id as string | undefined) ?? `preset-${presets.length + 1}`
     const stored = { id, ...draft }
@@ -94,6 +89,7 @@ beforeEach(() => {
   simulatingId = undefined
   exitResult = undefined
   applyResult = undefined
+  inForeignGroup = false
   usage = {}
   sendMessage = vi.fn(async (command: { type: string; [key: string]: unknown }) => reply(command))
   vi.stubGlobal("chrome", {
@@ -292,6 +288,49 @@ describe("浏览器预设页", () => {
     renderPage()
     await screen.findByText(/尚未创建浏览器预设/)
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+})
+
+describe("浏览器预设页的移出分组合规确认", () => {
+  it("标签页在用户自建分组时先弹确认框，取消不应用", async () => {
+    presets = [preset()]
+    inForeignGroup = true
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText(/已属于你自己创建的分组/)).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    // 取消后什么都没发生：只有那一次未获确认的请求。
+    expect(commands("apply")).toHaveLength(1)
+    expect(commands("apply")[0].confirmGroupMove).toBeUndefined()
+    expect(usage["preset-1"]).toBeUndefined()
+  })
+
+  it("确认后带 confirmGroupMove 重发并完成应用", async () => {
+    presets = [preset()]
+    inForeignGroup = true
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "移出并应用" }))
+
+    expect(await screen.findByRole("status")).toHaveTextContent("已应用「iPhone 15」")
+    expect(commands("apply")).toHaveLength(2)
+    expect(commands("apply")[1]).toMatchObject({ type: "apply", id: "preset-1", confirmGroupMove: true })
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("标签页不在自建分组时不弹确认框，直接应用", async () => {
+    presets = [preset()]
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("已应用「iPhone 15」")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(commands("apply")).toHaveLength(1)
   })
 })
 

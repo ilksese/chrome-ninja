@@ -18,7 +18,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 - 网络监视器：捕获页面请求，查看请求与响应详情。
 - 操作录制、翻译和 UA 身份切换。
 - Cookie 编辑器：在网页中查询、新增、修改与持续禁用当前主机的 Cookie。
-- 浏览器预设：保存 User-Agent 与 viewport 组合，供后续对单个标签页应用。
+- 浏览器预设：保存 User-Agent 与 viewport 组合，并对单个标签页应用模拟。
 - 网页内面板（Cookie 编辑器、网络监视器、步骤记录器）可拖动标题栏、拖动右下角调整大小；仅标题栏拖动改变位置或原生缩放改变尺寸后保存布局，普通点击期间的内容增高不保存。各面板使用独立的 `chrome.storage.local` 键 `contentUiPanelLayouts.<panel-key>`，所有站点与标签页共用。恢复与拖动统一保留 8 px 视口边距，拖动的每次移动按面板当前实际尺寸计算边界，各自最小尺寸在小视口下缩小。Cookie 编辑器首次打开的默认布局同样经过边界夹取。
 - 默认配置在 `src/store/options.ts`，类型在 `src/types.ts`。
 
@@ -44,16 +44,36 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 
 ## 浏览器预设
 
-从扩展弹窗或选项页的首页卡片进入 `/browser-presets`，页面由 Popup 与 Options 共用。首次进入说明应用预设需要附加调试权限。
+从扩展弹窗或选项页的首页卡片进入 `/browser-presets`，页面由 Popup 与 Options 共用；首页卡片同时显示当前标签页的模拟状态与预设名，并提供「退出模拟」。首次进入说明应用预设需要附加调试权限。
 
 预设保存在 `chrome.storage.local.browserPresets`，与 `options` 分开，浏览器重启后保留；首次安装为空，不内置默认预设。记录包含稳定 `id`、唯一 `name`、沿用 `USER_AGENT_OPTIONS` 的 `userAgent`（`default` 表示不覆盖 UA）与 `viewport`（宽、高、设备像素比、mobile）。
 
 - 名称去首尾空格后非空，长度上限 40，唯一性忽略大小写。
 - 宽高为 200–4000 的整数，设备像素比为 1–4；越界时展示校验提示并拒绝保存。
 - 设备档位按钮只填入视口数值，不作为可保存实体，不进入存储。填入后可继续手动微调。
+- UA 身份的移动端声明与视口 mobile 开关不一致时，保存前弹出确认框，列出实际发出的 `sec-ch-ua-mobile`、布局处理方式与指纹割裂风险；取消回到表单，确认后按用户填写的值保存，不做静默修正。
 - 支持编辑全部字段与重命名；删除前二次确认并展示预设名。
 
-后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令（`list`、`create`、`update`、`delete`），校验规则在 `src/browser-preset/validation.ts`，页面与后台共用同一份。协议与页面行为分别由 `tests/browser-preset-background.test.ts` 与 `tests/browser-presets-page.test.tsx` 验证。
+### 应用与退出
+
+`apply` 对目标标签页附加调试器，下发 `Emulation.setDeviceMetricsOverride`，UA 不为 `default` 时再下发完整身份（`userAgent`、`platform` 与 `userAgentMetadata`），最后重新加载页面。覆盖跟随该标签页跨刷新、站内跳转与 SPA 路由切换，新开标签页不受影响。
+
+- 模拟中的标签页归入名为 `[ninja] <预设名>` 的标签页分组。同一预设的标签页共用一个分组；扩展只认自己创建的 groupId，用户自建的同名分组不会被认领，分组变空由 Chrome 关闭后扩展同步移除记账。
+- 把标签页移出模拟分组即退出模拟，与页面上的「退出模拟」走同一条收尾路径：归还全局 UA 改写、分离调试器、离开分组并重新加载。
+- 标签页已在用户自建分组时，`apply` 先返回 `needsGroupMoveConfirmation` 且不做任何改动；页面弹确认框，确认后带 `confirmGroupMove` 重发，把标签页移出用户分组再归入模拟分组。
+- 已模拟的标签页切换预设时复用同一个调试会话，只重新下发参数并刷新，不分离后再附加，因此不会重复出现调试提示条。从具体 UA 切到「不覆盖」时下发空的 `userAgent` 清除上一次的 UA 覆盖。
+
+应用期间浏览器显示一条扩展无法抑制的调试提示条（「"扩展名" started debugging this browser」）；用户在该提示条点击取消或打开 DevTools 都会终止会话，扩展随之退出模拟并给出一次性提示。`chrome://`、扩展页与 Chrome 网上应用店等受限页面无法模拟，`status` 提前返回原因，页面据此在点击前禁用应用按钮。
+
+### UA 与全局改写
+
+预设选具体 UA 时，全局 `User-Agent` 改写规则被暂停，避免同一请求带上两套身份；退出最后一个模拟标签页后按用户最新的全局选择恢复。选「不覆盖」的预设只模拟视口，不暂停全局规则；若该标签页此前在模拟具体 UA，「不覆盖」会归还那次暂停。Safari 类身份不下发 `userAgentMetadata`，全部 `sec-ch-ua-*` 请求头因此不出现。
+
+### 使用中的锁定
+
+被至少一个标签页使用的预设不能编辑、重命名或删除，列表显示「正在 N 个标签页使用」并提供「停止」。停止逐个退出所有使用该预设的标签页，最后一个使用者退出后预设自动解锁。前端只读后台下发的使用数量，不自行推断锁定态。
+
+后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令（`list`、`create`、`update`、`delete`、`apply`、`simulate-exit`、`stop`、`status`），校验规则在 `src/browser-preset/validation.ts`，页面与后台共用同一份；UA 身份包在 `src/browser-preset/identity.ts`，设备档位在 `src/browser-preset/devices.ts`。协议、身份包、页面与首页入口分别由 `tests/browser-preset-background.test.ts`、`tests/browser-preset-identity.test.ts`、`tests/browser-presets-page.test.tsx` 与 `tests/home-browser-preset-entry.test.tsx` 验证。
 
 ## 命令
 

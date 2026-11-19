@@ -29,8 +29,6 @@ pnpm test --project packages
 
 根目录 `vitest.config.ts` 独立于应用构建配置，不加载 CRX、manifest 扫描、Tailwind 或开发 HMR 插件。各应用测试保留自己的源码别名；UI 测试使用 Preact compat，不安装 React/React DOM。
 
-`extension` 项目默认运行在 Node；需要 DOM 的 `.test.ts` 在文件首行添加 `// @vitest-environment jsdom`，例如 `content-ui.test.ts`、`cookie-editor-panel.test.ts`。此 pragma 覆盖默认环境，不需要将原生 DOM / VanJS 测试改成 `.tsx`。
-
 DOM 测试通过 `tests/setup-dom.ts` 注册 jest-dom 断言并在每个用例后清理 DOM。使用 Testing Library 按角色、名称查询元素，测试可观察的交互行为，不依赖组件内部状态或大面积快照。
 
 Chrome API 在用例中通过 `vi.stubGlobal` 按需模拟；不要创建覆盖全部 API 的通用模拟层。模拟会在用例之间自动恢复，订阅和其他外部资源仍需由用例主动清理。
