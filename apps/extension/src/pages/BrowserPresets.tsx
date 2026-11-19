@@ -2,6 +2,7 @@ import type {
   BrowserPreset,
   BrowserPresetDraft,
   BrowserPresetResponse,
+  BrowserPresetUsage,
   MobileConflict
 } from "@/browser-preset/types"
 import type { PresetField, PresetFieldErrors } from "@/browser-preset/validation"
@@ -75,6 +76,8 @@ const fieldClass =
 export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const isOptions = layout === "options"
   const [presets, setPresets] = useState<BrowserPreset[]>([])
+  // 使用数量由后台按内存映射现算；页面只读，不自行推断哪个预设被占用。
+  const [usage, setUsage] = useState<BrowserPresetUsage>({})
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<FormState | null>(null)
   const [submitted, setSubmitted] = useState(false)
@@ -85,6 +88,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [tabReason, setTabReason] = useState("")
   const [simulatingId, setSimulatingId] = useState<string | undefined>(undefined)
   const [applyingId, setApplyingId] = useState("")
+  const [stoppingId, setStoppingId] = useState("")
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
   const [conflict, setConflict] = useState<MobileConflict | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -101,6 +105,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({ type: "list" })
       if (!response?.ok) throw new Error(response?.error ?? "无法读取预设列表")
       setPresets(response.presets ?? [])
+      setUsage(response.usage ?? {})
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法读取预设列表")
     } finally {
@@ -190,6 +195,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       }
       if (!response?.ok) throw new Error(response?.error ?? "保存失败")
       setPresets(response.presets ?? [])
+      setUsage(response.usage ?? {})
       closeForm()
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败")
@@ -208,6 +214,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({ type: "delete", id: pendingDelete.id })
       if (!response?.ok) throw new Error(response?.error ?? "删除失败")
       setPresets(response.presets ?? [])
+      setUsage(response.usage ?? {})
       setPendingDelete(null)
       requestAnimationFrame(() => deleteTriggerRef.current?.focus())
     } catch (err) {
@@ -224,6 +231,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({ type: "apply", id: preset.id })
       if (!response?.ok) throw new Error(response?.error ?? "应用预设失败")
       setSimulatingId(preset.id)
+      // 应用改变了使用数量，锁定态与「正在 N 个标签页使用」必须立刻反映出来。
+      void refresh()
       setNotice(`已应用「${preset.name}」`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "应用预设失败")
@@ -242,8 +251,33 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       if (!response?.ok) throw new Error(response?.error ?? "退出模拟失败")
       setSimulatingId(undefined)
       setNotice("已退出模拟")
+      // 退出可能让该预设的使用者归零，解锁状态要在列表上同步刷新。
+      void refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "退出模拟失败")
+    }
+  }
+
+  /**
+   * 停止一个预设：退出所有正在使用它的标签页。
+   * 与单个标签页的退出模拟不同，停止是全局操作，只需一次命令，页面随后按返回结果刷新列表。
+   */
+  const stopPreset = async (preset: BrowserPreset) => {
+    setError("")
+    setNotice("")
+    setStoppingId(preset.id)
+    try {
+      const response = await send({ type: "stop", id: preset.id })
+      if (!response?.ok) throw new Error(response?.error ?? "停止失败")
+      setPresets(response.presets ?? [])
+      setUsage(response.usage ?? {})
+      // 停止会退出包括当前标签页在内的所有使用者，模拟状态与本地状态一并清空。
+      setSimulatingId(undefined)
+      setNotice(`已停止「${preset.name}」`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "停止失败")
+    } finally {
+      setStoppingId("")
     }
   }
 
@@ -479,48 +513,71 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
             </div>
           ) : (
             <ul className="space-y-2">
-              {presets.map((preset) => (
-                <li
-                  key={preset.id}
-                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-950">{preset.name}</span>
-                    <span className="mt-0.5 block text-xs text-slate-500">
-                      {preset.userAgent === "default"
-                        ? "不覆盖 UA"
-                        : USER_AGENT_OPTIONS.find((option) => option.value === preset.userAgent)?.label}{" "}
-                      · {preset.viewport.width}×{preset.viewport.height} @{preset.viewport.deviceScaleFactor}x ·{" "}
-                      {preset.viewport.mobile ? "移动端" : "桌面端"}
+              {presets.map((preset) => {
+                // 使用中即锁定：数量来自后台，页面不自行判断；锁定只放开「停止」，其余编辑入口一并禁用。
+                const inUse = (usage[preset.id] ?? 0) > 0
+                return (
+                  <li
+                    key={preset.id}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-950">{preset.name}</span>
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {preset.userAgent === "default"
+                          ? "不覆盖 UA"
+                          : USER_AGENT_OPTIONS.find((option) => option.value === preset.userAgent)?.label}{" "}
+                        · {preset.viewport.width}×{preset.viewport.height} @{preset.viewport.deviceScaleFactor}x ·{" "}
+                        {preset.viewport.mobile ? "移动端" : "桌面端"}
+                      </span>
+                      {inUse && (
+                        <span className="mt-0.5 block text-xs font-medium text-[#0c5fb8]">
+                          正在 {usage[preset.id]} 个标签页使用
+                        </span>
+                      )}
                     </span>
-                  </span>
-                  <button
-                    className="shrink-0 rounded-lg bg-[#0c5fb8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#094c93] disabled:cursor-not-allowed disabled:opacity-50"
-                    type="button"
-                    aria-label={`应用 ${preset.name}`}
-                    title={tabReason || undefined}
-                    disabled={!!tabReason || applyingId === preset.id}
-                    onClick={() => void applyPreset(preset)}>
-                    {applyingId === preset.id ? "应用中" : "应用"}
-                  </button>
-                  <button
-                    className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-                    type="button"
-                    aria-label={`编辑 ${preset.name}`}
-                    onClick={() => openEdit(preset)}>
-                    编辑
-                  </button>
-                  <button
-                    className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
-                    type="button"
-                    aria-label={`删除 ${preset.name}`}
-                    onClick={(event) => {
-                      deleteTriggerRef.current = event.currentTarget as HTMLElement
-                      setPendingDelete(preset)
-                    }}>
-                    删除
-                  </button>
-                </li>
-              ))}
+                    <button
+                      className="shrink-0 rounded-lg bg-[#0c5fb8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#094c93] disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      aria-label={`应用 ${preset.name}`}
+                      title={tabReason || undefined}
+                      disabled={!!tabReason || applyingId === preset.id}
+                      onClick={() => void applyPreset(preset)}>
+                      {applyingId === preset.id ? "应用中" : "应用"}
+                    </button>
+                    {inUse && (
+                      <button
+                        className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff] disabled:opacity-60"
+                        type="button"
+                        aria-label={`停止 ${preset.name}`}
+                        disabled={stoppingId === preset.id}
+                        onClick={() => void stopPreset(preset)}>
+                        {stoppingId === preset.id ? "停止中" : "停止"}
+                      </button>
+                    )}
+                    <button
+                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      aria-label={`编辑 ${preset.name}`}
+                      title={inUse ? "正在被使用的预设不能编辑，请先停止" : undefined}
+                      disabled={inUse}
+                      onClick={() => openEdit(preset)}>
+                      编辑
+                    </button>
+                    <button
+                      className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      type="button"
+                      aria-label={`删除 ${preset.name}`}
+                      title={inUse ? "正在被使用的预设不能删除，请先停止" : undefined}
+                      disabled={inUse}
+                      onClick={(event) => {
+                        deleteTriggerRef.current = event.currentTarget as HTMLElement
+                        setPendingDelete(preset)
+                      }}>
+                      删除
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>

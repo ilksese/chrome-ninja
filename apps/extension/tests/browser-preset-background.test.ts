@@ -1060,3 +1060,145 @@ describe("与全局 UA 改写的协调", () => {
     expect(dnrWrites).toEqual([])
   })
 })
+
+describe("使用中的预设", () => {
+  const create = async (patched: Partial<PresetDraft> = {}) => {
+    const created = await request({ type: "create", preset: draft(patched) })
+    expect(created.ok, created.error).toBe(true)
+    return created.preset!
+  }
+
+  const apply = (presetId: string, from = popupSender) => request({ type: "apply", id: presetId }, from)
+
+  it("列表回报每个预设正在被多少个标签页使用", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    const usage = async () => (await request({ type: "list" })).usage!
+
+    expect(await usage()).toEqual({ [preset.id]: 0 })
+    await apply(preset.id)
+    await apply(preset.id, secondTabSender)
+    expect(await usage()).toEqual({ [preset.id]: 2 })
+  })
+
+  it("使用中的预设拒绝编辑与重命名", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+
+    const edited = await request({ type: "update", id: preset.id, preset: draft({ name: "iPhone 15" , viewport: { width: 400, height: 800, deviceScaleFactor: 2, mobile: true } }) })
+    expect(edited.ok).toBe(false)
+    expect(edited.error).toBe("预设正在被使用，请先停止")
+
+    const renamed = await request({ type: "update", id: preset.id, preset: draft({ name: "改过的名字" }) })
+    expect(renamed.ok).toBe(false)
+    expect(renamed.error).toBe("预设正在被使用，请先停止")
+
+    // 拒绝发生在写入之前：存储与分组名都保持原样。
+    expect((await list())[0]).toMatchObject({ name: "iPhone 15", viewport: preset.viewport })
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+    expect(storage.browserPresets).toEqual([preset])
+  })
+
+  it("使用中的预设拒绝删除", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+
+    const removed = await request({ type: "delete", id: preset.id })
+    expect(removed.ok).toBe(false)
+    expect(removed.error).toBe("预设正在被使用，请先停止")
+    expect(await list()).toEqual([preset])
+  })
+
+  it("被其他预设使用时，空闲预设仍可编辑与删除", async () => {
+    const busy = await create({ name: "iPhone 15" })
+    const idle = await create({ name: "Pixel 8", userAgent: "chrome-android", viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true } })
+    await apply(busy.id)
+
+    const edited = await request({ type: "update", id: idle.id, preset: draft({ name: "Pixel 8 改", userAgent: "chrome-android", viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true } }) })
+    expect(edited.ok, edited.error).toBe(true)
+
+    const removed = await request({ type: "delete", id: idle.id })
+    expect(removed.ok, removed.error).toBe(true)
+    expect(await list()).toEqual([busy])
+  })
+
+  it("停止退出所有正在使用该预设的标签页", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    await apply(preset.id, secondTabSender)
+    commands = []
+
+    const stopped = await request({ type: "stop", id: preset.id })
+    expect(stopped.ok, stopped.error).toBe(true)
+    // 两个标签页都走了统一退出路径：分离 → 重新加载，一个都不落。
+    expect(commands).toEqual([
+      ["detach", { tabId: 7 }],
+      ["reload", { tabId: 7 }],
+      ["detach", { tabId: 8 }],
+      ["reload", { tabId: 8 }]
+    ])
+    expect(tabGroupIds.get(7)).toBe(-1)
+    expect(tabGroupIds.get(8)).toBe(-1)
+    expect(groupTitles()).toEqual([])
+  })
+
+  it("停止只作用于该预设的标签页", async () => {
+    const target = await create({ name: "iPhone 15" })
+    const other = await create({ name: "Pixel 8", userAgent: "chrome-android", viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true } })
+    await apply(target.id)
+    await apply(other.id, secondTabSender)
+    commands = []
+
+    const stopped = await request({ type: "stop", id: target.id })
+    expect(stopped.ok, stopped.error).toBe(true)
+    expect(commands).toEqual([
+      ["detach", { tabId: 7 }],
+      ["reload", { tabId: 7 }]
+    ])
+    expect((await request({ type: "status" }, secondTabSender)).presetId).toBe(other.id)
+  })
+
+  it("全部使用者退出后预设自动解锁，恢复可编辑与可删除", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    await apply(preset.id, secondTabSender)
+    expect((await request({ type: "update", id: preset.id, preset: draft({ name: "先试试" }) })).ok).toBe(false)
+
+    await request({ type: "stop", id: preset.id })
+    expect((await request({ type: "list" })).usage).toEqual({ [preset.id]: 0 })
+
+    const renamed = await request({ type: "update", id: preset.id, preset: draft({ name: "改名后" }) })
+    expect(renamed.ok, renamed.error).toBe(true)
+    const removed = await request({ type: "delete", id: preset.id })
+    expect(removed.ok, removed.error).toBe(true)
+    expect(await list()).toEqual([])
+  })
+
+  it("空闲预停止是空操作，不重新加载任何页面", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    commands = []
+    const stopped = await request({ type: "stop", id: preset.id })
+    expect(stopped.ok, stopped.error).toBe(true)
+    expect(commands).toEqual([])
+  })
+
+  it("停止不存在的预设时给出可读原因", async () => {
+    const stopped = await request({ type: "stop", id: "missing" })
+    expect(stopped.ok).toBe(false)
+    expect(stopped.error).toBe("预设不存在，可能已被删除")
+  })
+
+  it("最后一个使用者被动终止后同样解锁", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    await apply(preset.id, secondTabSender)
+
+    // 用户把两个标签页分别拖出分组，等价于逐个退出模拟。
+    userMovesTabOut(7)
+    await vi.waitFor(async () => expect((await request({ type: "list" })).usage).toEqual({ [preset.id]: 1 }))
+    userMovesTabOut(8)
+    await vi.waitFor(async () => expect((await request({ type: "list" })).usage).toEqual({ [preset.id]: 0 }))
+
+    const renamed = await request({ type: "update", id: preset.id, preset: draft({ name: "改名后" }) })
+    expect(renamed.ok, renamed.error).toBe(true)
+  })
+})

@@ -3,6 +3,7 @@ import type {
   BrowserPreset,
   BrowserPresetRequest,
   BrowserPresetResponse,
+  BrowserPresetUsage,
   UserAgentIdentity
 } from "./types"
 import { pageUnavailableReason } from "@/cookie-editor/types"
@@ -199,6 +200,17 @@ async function applyUaOverride(tabId: number, identity: UserAgentIdentity) {
   )
 }
 
+/**
+ * 停止一个预设：逐个走统一的 `endSession`，让分离、离开分组、重新加载与全局规则归还都不被绕过。
+ * 先快照标签页再退出——`endSession` 会删 `appliedByTab`，边迭代边删会漏掉后面的标签页。
+ */
+async function stopPreset(presetId: string) {
+  const tabIds = [...appliedByTab.entries()]
+    .filter(([, applied]) => applied.presetId === presetId)
+    .map(([tabId]) => tabId)
+  for (const tabId of tabIds) await endSession(tabId)
+}
+
 async function loadPresets(): Promise<BrowserPreset[]> {
   const stored = await chrome.storage.local.get([BROWSER_PRESETS_KEY])
   const value = stored[BROWSER_PRESETS_KEY]
@@ -207,6 +219,30 @@ async function loadPresets(): Promise<BrowserPreset[]> {
 
 async function savePresets(presets: BrowserPreset[]) {
   await chrome.storage.local.set({ [BROWSER_PRESETS_KEY]: presets })
+}
+
+/** 每个预设当前被多少个标签页使用；「使用中」的唯一判定依据，直接数 `appliedByTab`。 */
+function usageCountOf(presetId: string) {
+  let count = 0
+  for (const applied of appliedByTab.values()) if (applied.presetId === presetId) count += 1
+  return count
+}
+
+/**
+ * 锁定判定：只要还有标签页在用这个预设，它的名称与参数就不能变。
+ * 重命名会让 `[ninja] <预设名>` 分组名与预设脱节，改参数会让同一分组下的标签页模拟出不同身份，
+ * 删除则会让分组失去对应的预设（见 ADR 0003）。因此编辑、重命名与删除共用这一条拒绝规则。
+ */
+function assertPresetUnused(presetId: string) {
+  if (usageCountOf(presetId) > 0) throw new Error("预设正在被使用，请先停止")
+}
+
+/**
+ * 按预设 id 汇总使用数量。单独成表而不是并进预设记录，是为了让 `presets` 保持存储里的原样：
+ * 预设本身是可持久化的数据，使用数量只活在后台内存里。
+ */
+function usageOf(presets: BrowserPreset[]): BrowserPresetUsage {
+  return Object.fromEntries(presets.map((preset) => [preset.id, usageCountOf(preset.id)]))
 }
 
 export function registerBrowserPresetBackground() {
@@ -234,7 +270,7 @@ export function registerBrowserPresetBackground() {
       const handle = async (): Promise<BrowserPresetResponse> => {
         if (sender.id !== chrome.runtime.id) throw new Error("不受信任的扩展消息")
         const presets = await loadPresets()
-        if (message.type === "list") return { ok: true, presets }
+        if (message.type === "list") return { ok: true, presets, usage: usageOf(presets) }
         if (message.type === "create") {
           const { draft, errors } = validatePreset(message.preset, presets)
           const error = firstPresetError(errors)
@@ -245,11 +281,13 @@ export function registerBrowserPresetBackground() {
           const preset: BrowserPreset = { id: crypto.randomUUID(), ...draft }
           const next = [...presets, preset]
           await savePresets(next)
-          return { ok: true, preset, presets: next }
+          return { ok: true, preset, presets: next, usage: usageOf(next) }
         }
         if (message.type === "update") {
           const existing = presets.find((preset) => preset.id === message.id)
           if (!existing) throw new Error("预设不存在，可能已被删除")
+          // 编辑与重命名走同一条命令，锁定必须在写入前拒绝，不能指望页面藏按钮。
+          assertPresetUnused(existing.id)
           const { draft, errors } = validatePreset(message.preset, presets, message.id)
           const error = firstPresetError(errors)
           if (error) throw new Error(error)
@@ -259,13 +297,19 @@ export function registerBrowserPresetBackground() {
           const preset: BrowserPreset = { id, ...draft }
           const next = presets.map((item) => (item.id === id ? preset : item))
           await savePresets(next)
-          return { ok: true, preset, presets: next }
+          return { ok: true, preset, presets: next, usage: usageOf(next) }
         }
         if (message.type === "delete") {
           if (!presets.some((preset) => preset.id === message.id)) throw new Error("预设不存在，可能已被删除")
+          assertPresetUnused(message.id)
           const next = presets.filter((preset) => preset.id !== message.id)
           await savePresets(next)
-          return { ok: true, presets: next }
+          return { ok: true, presets: next, usage: usageOf(next) }
+        }
+        if (message.type === "stop") {
+          if (!presets.some((preset) => preset.id === message.id)) throw new Error("预设不存在，可能已被删除")
+          await stopPreset(message.id)
+          return { ok: true, presets, usage: usageOf(presets) }
         }
         if (message.type === "status") {
           const tabId = await targetTabId(sender)

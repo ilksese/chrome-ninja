@@ -16,6 +16,8 @@ let statusNotice: string | undefined
 let simulatingId: string | undefined
 let exitResult: { ok: boolean; error?: string } | undefined
 let applyResult: { ok: boolean; error?: string } | undefined
+/** 后台按 appliedByTab 现算的使用数量；页面只读不猜。 */
+let usage: Record<string, number> = {}
 
 const preset = (patch: Partial<Preset> = {}): Preset => ({
   id: "preset-1",
@@ -38,7 +40,13 @@ const conflictOf = (draft: Omit<Preset, "id">) => {
 }
 
 const reply = (command: { type: string; [key: string]: unknown }) => {
-  if (command.type === "list") return { ok: true, presets: structuredClone(presets) }
+  if (command.type === "list") return { ok: true, presets: structuredClone(presets), usage: { ...usage } }
+  if (command.type === "stop") {
+    // 停止退出所有使用者：计数清零，当前标签页也随之退出模拟。
+    usage = { ...usage, [command.id as string]: 0 }
+    simulatingId = undefined
+    return { ok: true, presets: structuredClone(presets), usage: { ...usage } }
+  }
   if (command.type === "status")
     return {
       ok: true,
@@ -47,7 +55,12 @@ const reply = (command: { type: string; [key: string]: unknown }) => {
       notice: statusNotice,
       ...(simulatingId ? { presetId: simulatingId } : {})
     }
-  if (command.type === "apply") return applyResult ?? { ok: true }
+  if (command.type === "apply") {
+    if (applyResult && !applyResult.ok) return applyResult
+    // 与后台一致：应用让该预设的使用数量加一，页面随后刷新即可看到锁定态。
+    usage = { ...usage, [command.id as string]: (usage[command.id as string] ?? 0) + 1 }
+    return { ok: true }
+  }
   if (command.type === "simulate-exit") {
     if (exitResult && !exitResult.ok) return exitResult
     simulatingId = undefined
@@ -60,11 +73,11 @@ const reply = (command: { type: string; [key: string]: unknown }) => {
     const id = (command.id as string | undefined) ?? `preset-${presets.length + 1}`
     const stored = { id, ...draft }
     presets = command.type === "create" ? [...presets, stored] : presets.map((item) => (item.id === id ? stored : item))
-    return { ok: true, preset: structuredClone(stored), presets: structuredClone(presets) }
+    return { ok: true, preset: structuredClone(stored), presets: structuredClone(presets), usage: { ...usage } }
   }
   if (command.type === "delete") {
     presets = presets.filter((item) => item.id !== command.id)
-    return { ok: true, presets: structuredClone(presets) }
+    return { ok: true, presets: structuredClone(presets), usage: { ...usage } }
   }
   return { ok: false, error: "未知命令" }
 }
@@ -81,6 +94,7 @@ beforeEach(() => {
   simulatingId = undefined
   exitResult = undefined
   applyResult = undefined
+  usage = {}
   sendMessage = vi.fn(async (command: { type: string; [key: string]: unknown }) => reply(command))
   vi.stubGlobal("chrome", {
     runtime: { sendMessage },
@@ -298,5 +312,63 @@ describe("浏览器预设页退出模拟", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("已退出模拟")
     expect(commands("simulate-exit")).toHaveLength(1)
     expect(screen.getByText("当前没有模拟")).toBeInTheDocument()
+  })
+})
+
+describe("浏览器预设页的使用中状态", () => {
+  it("使用中的预设展示「正在 N 个标签页使用」", async () => {
+    presets = [preset()]
+    usage = { "preset-1": 3 }
+    renderPage()
+    expect(await screen.findByText("正在 3 个标签页使用")).toBeInTheDocument()
+  })
+
+  it("使用中的预设禁止编辑与删除，只保留停止", async () => {
+    presets = [preset()]
+    usage = { "preset-1": 1 }
+    renderPage()
+
+    expect(await screen.findByRole("button", { name: "编辑 iPhone 15" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "删除 iPhone 15" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "停止 iPhone 15" })).toBeEnabled()
+  })
+
+  it("点击停止退出所有使用者并恢复可编辑可删除", async () => {
+    presets = [preset()]
+    usage = { "preset-1": 2 }
+    simulatingId = "preset-1"
+    renderPage()
+
+    fireEvent.click(await screen.findByRole("button", { name: "停止 iPhone 15" }))
+    expect(commands("stop")).toMatchObject([{ target: "browser-preset", type: "stop", id: "preset-1" }])
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑 iPhone 15" })).toBeEnabled())
+    expect(screen.getByRole("button", { name: "删除 iPhone 15" })).toBeEnabled()
+    expect(screen.queryByText(/正在 \d+ 个标签页使用/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "停止 iPhone 15" })).not.toBeInTheDocument()
+  })
+
+  it("空闲预设仍可编辑与删除，不展示使用数量", async () => {
+    presets = [preset()]
+    usage = { "preset-1": 0 }
+    renderPage()
+
+    expect(await screen.findByRole("button", { name: "编辑 iPhone 15" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "删除 iPhone 15" })).toBeEnabled()
+    expect(screen.queryByText(/个标签页使用/)).not.toBeInTheDocument()
+  })
+})
+
+describe("浏览器预设页锁定与模拟状态联动", () => {
+  it("应用预设后立刻显示使用数量并锁定编辑与删除", async () => {
+    presets = [preset()]
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "应用 iPhone 15" }))
+
+    // 锁定态来自应用后重新拉取的列表，不需要重开页面。
+    expect(await screen.findByText("正在 1 个标签页使用")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "编辑 iPhone 15" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "删除 iPhone 15" })).toBeDisabled()
+    expect(await screen.findByRole("button", { name: "停止 iPhone 15" })).toBeEnabled()
   })
 })
