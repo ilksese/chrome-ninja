@@ -48,7 +48,7 @@ export type BrowserPresetCommand =
   | { type: "list" }
   | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string; confirmConflict?: boolean }
   | { type: "delete"; id: string }
-  | { type: "apply"; id: string }
+  | { type: "apply"; id: string; confirmGroupMove?: boolean }
   /** 退出当前标签页的模拟。UI 入口由 #21 接入，后台路径先在此固定。 */
   | { type: "simulate-exit" }
   | { type: "status" }
@@ -61,15 +61,19 @@ export type BrowserPresetResponse = {
   /** 移动端判定冲突：本次未写入任何内容，需要用户确认后带 `confirmConflict` 重发。 */
   needsConfirmation?: boolean
   conflict?: MobileConflict
+  /** 标签页在用户自建分组中：本次未做任何改动，确认移出分组后带 `confirmGroupMove` 重发。 */
+  needsGroupMoveConfirmation?: boolean
   presets?: BrowserPreset[]
   preset?: BrowserPreset
   /** 目标标签页 id；`status` 返回。 */
   tabId?: number
+  /** 目标标签页正在模拟的预设 id；`status` 返回，未模拟时缺省。 */
+  presetId?: string
   /** 目标标签页不可模拟的原因，空串表示可以模拟；`status` 返回。 */
   unavailableReason?: string
 }
 
 /** 后台内存中「标签页正在模拟哪个预设」的映射，不持久化，扩展重启即丢失。 */
-export type AppliedPreset = { presetId: string }
+export type AppliedPreset = { presetId: string; groupId: number }
 
 export const BROWSER_PRESETS_KEY = "browserPresets"

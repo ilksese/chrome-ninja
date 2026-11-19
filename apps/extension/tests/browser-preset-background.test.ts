@@ -16,8 +16,19 @@ let commands: Array<[string, unknown]>
 /** 全局 DNR 规则的写操作记录：`remove` 表示移除规则，`add` 携带新规则。 */
 let dnrWrites: Array<{ removed: boolean; addedUa?: string }> = []
 let tabUrl = "https://example.com/page"
+let tabGroupIds: Map<number, number>
+let groups: Map<number, string>
+let nextGroupId = 100
+let tabUpdated: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => void
+let groupRemoved: (group: chrome.tabGroups.TabGroup) => void
 const sender = { id: "extension" } as chrome.runtime.MessageSender
 const popupSender = { id: "extension", url: "chrome-extension://extension/index.html" } as chrome.runtime.MessageSender
+/** 对第二个标签页发起命令时的发送方；目标标签页由发送方推导。 */
+const secondTabSender = {
+  id: "extension",
+  frameId: 0,
+  tab: { id: 8, url: "https://example.com/other" }
+} as chrome.runtime.MessageSender
 
 const draft = (patch: Partial<PresetDraft> = {}): PresetDraft => ({
   name: "iPhone 15",
@@ -31,6 +42,26 @@ const request = (command: object, from = sender) =>
     receive({ target: "browser-preset", ...command }, from, resolve)
   })
 
+/** 模拟 Chrome 的行为：分组里的标签页都离开后，分组自动关闭并触发 onRemoved。 */
+const closeGroupIfEmpty = (groupId: number) => {
+  if (!groups.has(groupId)) return
+  if ([...tabGroupIds.values()].includes(groupId)) return
+  const title = groups.get(groupId)!
+  groups.delete(groupId)
+  groupRemoved?.({ id: groupId, title } as chrome.tabGroups.TabGroup)
+}
+
+/** 模拟用户把标签页拖出分组：先改归属，再让空分组自行关闭。 */
+const userMovesTabOut = (tabId: number) => {
+  const groupId = tabGroupIds.get(tabId)
+  if (groupId === undefined || groupId === -1) return
+  tabGroupIds.set(tabId, -1)
+  tabUpdated?.(tabId, { groupId: -1 })
+  closeGroupIfEmpty(groupId)
+}
+
+const groupTitles = () => [...groups.values()]
+
 const list = async () => {
   const response = await request({ type: "list" })
   expect(response.ok, response.error).toBe(true)
@@ -42,6 +73,9 @@ beforeEach(async () => {
   commands = []
   dnrWrites = []
   tabUrl = "https://example.com/page"
+  tabGroupIds = new Map()
+  groups = new Map()
+  nextGroupId = 100
   vi.resetModules()
   vi.stubGlobal("chrome", {
     runtime: {
@@ -81,13 +115,68 @@ beforeEach(async () => {
       )
     },
     tabs: {
-      get: vi.fn(async (tabId: number) => ({ id: tabId, url: tabUrl })),
+      get: vi.fn(async (tabId: number) => ({
+        id: tabId,
+        url: tabUrl,
+        windowId: 3,
+        groupId: tabGroupIds.get(tabId) ?? -1
+      })),
       query: vi.fn(async (query: chrome.tabs.QueryInfo) => [
-        { id: 7, url: tabUrl, active: true, windowId: 3, ...query }
+        { id: 7, url: tabUrl, active: true, windowId: 3, groupId: tabGroupIds.get(7) ?? -1, ...query }
       ]),
       reload: vi.fn(async (tabId: number) => {
         commands.push(["reload", { tabId }])
-      })
+      }),
+      group: vi.fn(async (options: chrome.tabs.GroupOptions) => {
+        const tabIds = Array.isArray(options.tabIds) ? options.tabIds : [options.tabIds ?? 0]
+        if (options.groupId !== undefined && !groups.has(options.groupId)) {
+          throw new Error("No group with id: " + options.groupId)
+        }
+        const groupId = options.groupId ?? ++nextGroupId
+        if (options.groupId === undefined) groups.set(groupId, "")
+        const previous = new Set<number>()
+        for (const tabId of tabIds) {
+          const before = tabGroupIds.get(tabId)
+          if (before !== undefined) previous.add(before)
+          tabGroupIds.set(tabId, groupId)
+        }
+        // 与 Chrome 一致：加入新分组会把标签页移出原分组，空掉的分组随即关闭。
+        for (const groupId of previous) closeGroupIfEmpty(groupId)
+        return groupId
+      }),
+      ungroup: vi.fn(async (tabIds: number | number[]) => {
+        const ids = Array.isArray(tabIds) ? tabIds : [tabIds]
+        const touched = new Set<number>()
+        for (const tabId of ids) {
+          const groupId = tabGroupIds.get(tabId)
+          if (groupId === undefined || groupId === -1) continue
+          tabGroupIds.set(tabId, -1)
+          touched.add(groupId)
+        }
+        for (const groupId of touched) closeGroupIfEmpty(groupId)
+      }),
+      onUpdated: {
+        addListener: (fn: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => void) => {
+          tabUpdated = fn
+        }
+      }
+    },
+    tabGroups: {
+      TAB_GROUP_ID_NONE: -1,
+      get: vi.fn(async (groupId: number) => {
+        if (!groups.has(groupId)) throw new Error("No group with id: " + groupId)
+        return { id: groupId, title: groups.get(groupId) ?? "" } as chrome.tabGroups.TabGroup
+      }),
+      update: vi.fn(async (groupId: number, properties: chrome.tabGroups.UpdateProperties) => {
+        if (!groups.has(groupId)) throw new Error("No group with id: " + groupId)
+        groups.set(groupId, properties.title ?? groups.get(groupId)!)
+        return { id: groupId, title: groups.get(groupId) ?? "" } as chrome.tabGroups.TabGroup
+      }),
+      onRemoved: {
+        addListener: (fn: (group: chrome.tabGroups.TabGroup) => void) => {
+          groupRemoved = fn
+        }
+      }
     },
     debugger: {
       getTargets: vi.fn(async (): Promise<chrome.debugger.TargetInfo[]> => []),
@@ -298,6 +387,146 @@ describe("浏览器预设后台协议", () => {
     expect(receive({ target: "cookie-editor", type: "list" }, sender as chrome.runtime.MessageSender, vi.fn())).toBe(
       false
     )
+  })
+})
+
+describe("标签页分组生命周期", () => {
+  const create = async (patched: Partial<PresetDraft> = {}) => {
+    const created = await request({ type: "create", preset: draft(patched) })
+    expect(created.ok, created.error).toBe(true)
+    return created.preset!
+  }
+
+  const apply = (presetId: string) => request({ type: "apply", id: presetId }, popupSender)
+
+  const status = async () => {
+    const response = await request({ type: "status" }, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    return response
+  }
+
+  it("应用预设后标签页进入以 [ninja] 加预设名命名的分组", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    const response = await apply(preset.id)
+    expect(response.ok, response.error).toBe(true)
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+  })
+
+  it("同一预设已有扩展自建分组时复用，不重复新建", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    const firstGroupId = tabGroupIds.get(7)
+    await apply(preset.id)
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+    expect(tabGroupIds.get(7)).toBe(firstGroupId)
+  })
+
+  it("复用失败时新建分组并记录新 id", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    const firstGroupId = tabGroupIds.get(7)!
+    groups.delete(firstGroupId)
+    const response = await apply(preset.id)
+    expect(response.ok, response.error).toBe(true)
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+    expect(tabGroupIds.get(7)).not.toBe(firstGroupId)
+  })
+
+  it("用户自建的同名分组不被认领", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    groups.set(9, "[ninja] iPhone 15")
+    const response = await apply(preset.id)
+    expect(response.ok, response.error).toBe(true)
+    expect(tabGroupIds.get(7)).not.toBe(9)
+    expect(groups.has(9)).toBe(true)
+  })
+
+  it("用户自建分组变空关闭时不清理扩展的映射", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    const ownGroupId = tabGroupIds.get(7)!
+    groups.set(9, "我的分组")
+    groupRemoved?.({ id: 9, title: "我的分组" } as chrome.tabGroups.TabGroup)
+    expect(tabGroupIds.get(7)).toBe(ownGroupId)
+    const response = await apply(preset.id)
+    expect(response.ok, response.error).toBe(true)
+    expect(tabGroupIds.get(7)).toBe(ownGroupId)
+    expect(chrome.tabs.group).toHaveBeenLastCalledWith({ tabIds: [7], groupId: ownGroupId })
+  })
+
+  it("用户把标签页移出扩展分组即视为退出模拟", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    commands = []
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    expect(commands).toContainEqual(["detach", { tabId: 7 }])
+    expect(await status()).toMatchObject({ presetId: undefined })
+  })
+
+  it("分组关闭后再次应用时进入新分组", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    const response = await apply(preset.id)
+    expect(response.ok, response.error).toBe(true)
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+  })
+
+  it("同一预设的多个标签页共用一个分组", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    const fromSecondTab = await request({ type: "apply", id: preset.id }, secondTabSender)
+    expect(fromSecondTab.ok, fromSecondTab.error).toBe(true)
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+    expect(tabGroupIds.get(8)).toBe(tabGroupIds.get(7))
+  })
+
+  it("分组仍有标签页时用户移出一个，只退出该标签页的模拟", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    await request({ type: "apply", id: preset.id }, secondTabSender)
+    commands = []
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    expect(commands).not.toContainEqual(["detach", { tabId: 8 }])
+    expect(groupTitles()).toEqual(["[ninja] iPhone 15"])
+    const second = await request({ type: "status" }, secondTabSender)
+    expect(second.presetId).toBe(preset.id)
+  })
+
+  it("标签页已在用户自建分组时，应用前要求确认且不附加调试器", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    groups.set(9, "我的分组")
+    tabGroupIds.set(7, 9)
+    commands = []
+    const first = await apply(preset.id)
+    expect(first.ok).toBe(false)
+    expect(first.needsGroupMoveConfirmation).toBe(true)
+    expect(commands).toEqual([])
+    expect(tabGroupIds.get(7)).toBe(9)
+  })
+
+  it("确认后把标签页移出用户自建分组并归入预设分组", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    groups.set(9, "我的分组")
+    tabGroupIds.set(7, 9)
+    const confirmed = await request({ type: "apply", id: preset.id, confirmGroupMove: true }, popupSender)
+    expect(confirmed.ok, confirmed.error).toBe(true)
+    expect(groups.get(tabGroupIds.get(7)!)).toBe("[ninja] iPhone 15")
+    expect(groups.has(9)).toBe(false)
+  })
+
+  it("未分组或已在扩展分组内时应用不需要确认", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    const ungrouped = await apply(preset.id)
+    expect(ungrouped.ok, ungrouped.error).toBe(true)
+    expect(ungrouped.needsGroupMoveConfirmation).toBeUndefined()
+
+    const again = await apply(preset.id)
+    expect(again.ok, again.error).toBe(true)
+    expect(again.needsGroupMoveConfirmation).toBeUndefined()
   })
 })
 
@@ -557,6 +786,15 @@ describe("与全局 UA 改写的协调", () => {
     expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue })
   })
 
+  it("用户把标签页移出分组退出模拟时同样恢复全局规则", async () => {
+    await syncGlobalRule("chrome-desktop")
+    await apply(android)
+    dnrWrites = []
+
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue }))
+  })
+
   it("同一标签页切换到不覆盖 UA 的预设时归还全局规则", async () => {
     await syncGlobalRule("chrome-desktop")
     await apply(android)
@@ -567,6 +805,19 @@ describe("与全局 UA 改写的协调", () => {
     const switched = await request({ type: "apply", id: created.preset!.id }, popupSender)
     expect(switched.ok, switched.error).toBe(true)
     expect(dnrWrites.at(-1)).toEqual({ removed: true, addedUa: desktopUaValue })
+  })
+
+  it("分组加入失败时全局规则保持原状", async () => {
+    await syncGlobalRule("chrome-desktop")
+    const created = await request({ type: "create", preset: draft(android) })
+    const group = vi.mocked(chrome.tabs.group)
+    group.mockRejectedValueOnce(new Error("No group with id: 1")).mockRejectedValueOnce(new Error("Cannot move tab"))
+    dnrWrites = []
+
+    // 入组在让位之前失败：既没有借走全局规则，也就不需要恢复，规则应原封不动。
+    const failed = await request({ type: "apply", id: created.preset!.id }, popupSender)
+    expect(failed.ok).toBe(false)
+    expect(dnrWrites).toEqual([])
   })
 
   it("UA 覆盖下发失败时不残留让位状态", async () => {

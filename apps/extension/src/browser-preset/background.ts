@@ -20,6 +20,49 @@ const appliedByTab = new Map<number, AppliedPreset>()
  */
 const suspendedTabs = new Set<number>()
 
+/** 扩展自己创建的标签页分组；用户自建的分组永远不在此集合内。 */
+const ownedGroupIds = new Set<number>()
+
+const GROUP_TITLE_PREFIX = "[ninja] "
+
+const groupTitleOf = (preset: BrowserPreset) => `${GROUP_TITLE_PREFIX}${preset.name}`
+
+/** 建组、命名并记录 id；标签页同时离开原分组。 */
+async function createGroupFor(preset: BrowserPreset, tabId: number) {
+  const groupId = await chrome.tabs.group({ tabIds: [tabId], createProperties: {} })
+  ownedGroupIds.add(groupId)
+  await chrome.tabGroups.update(groupId, { title: groupTitleOf(preset) })
+  return groupId
+}
+
+/** 扩展自建、且仍对应本预设的分组：按记录的 id 反查标题，不按名称猜用户自建分组。 */
+async function findOwnGroup(preset: BrowserPreset) {
+  for (const groupId of ownedGroupIds) {
+    try {
+      const group = await chrome.tabGroups.get(groupId)
+      if (group.title === groupTitleOf(preset)) return groupId
+    } catch {
+      ownedGroupIds.delete(groupId)
+    }
+  }
+  return undefined
+}
+
+/** 复用同预设的扩展分组；分组已消失或加入失败时退回新建。 */
+async function joinPresetGroup(preset: BrowserPreset, tabId: number) {
+  // 先在扩展分组之间腾挪：chrome.tabs.group 会自动把标签页移出原分组，无需单独 ungroup。
+  const existing = await findOwnGroup(preset)
+  if (existing !== undefined) {
+    try {
+      await chrome.tabs.group({ tabIds: [tabId], groupId: existing })
+      return existing
+    } catch {
+      ownedGroupIds.delete(existing)
+    }
+  }
+  return await createGroupFor(preset, tabId)
+}
+
 /** 应用与状态查询只接受扩展页面或顶层网页发起，目标标签页随后从发起方推导。 */
 function assertSender(sender: chrome.runtime.MessageSender) {
   if (sender.id !== chrome.runtime.id) throw new Error("不受信任的扩展消息")
@@ -45,6 +88,27 @@ async function unavailableReasonFor(tabId: number) {
   return ""
 }
 
+/** 标签页当前是否在别人（用户或其他扩展）的分组里；扩展自建分组不算。 */
+async function inForeignGroup(tabId: number) {
+  const tab = await chrome.tabs.get(tabId)
+  const groupId = tab.groupId ?? -1
+  return groupId >= 0 && !ownedGroupIds.has(groupId)
+}
+
+/**
+ * 退出模拟的唯一入口：归还全局改写让位、分离调试会话、清空会话映射，再重新加载。
+ * 浏览器会随分离清除全部模拟覆盖，因此不需要逐个撤销。
+ * 用户移出分组与后续的退出命令（#21）都走这里。
+ */
+async function endSession(tabId: number) {
+  if (!appliedByTab.has(tabId)) return
+  // 让位是应用时借的，必须在这个统一出口归还，否则全局改写会一直处于移除状态。
+  if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
+  appliedByTab.delete(tabId)
+  await chrome.debugger.detach({ tabId }).catch(() => {})
+  await chrome.tabs.reload(tabId).catch(() => {})
+}
+
 async function applyPreset(preset: BrowserPreset, tabId: number) {
   const reason = await unavailableReasonFor(tabId)
   if (reason) throw new Error(reason)
@@ -53,13 +117,16 @@ async function applyPreset(preset: BrowserPreset, tabId: number) {
   try {
     await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", preset.viewport)
     if (identity) await applyUaOverride(tabId, identity)
+    const groupId = await joinPresetGroup(preset, tabId)
+    await syncGlobalUserAgentRule(tabId, Boolean(identity))
+    appliedByTab.set(tabId, { presetId: preset.id, groupId })
   } catch (error) {
+    // 失败时可能已让全局改写让位（入组成功后才切换），这里成对归还，避免规则一直处于移除状态。
+    if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
     await chrome.debugger.detach({ tabId }).catch(() => {})
     appliedByTab.delete(tabId)
     throw error
   }
-  await syncGlobalUserAgentRule(tabId, Boolean(identity))
-  appliedByTab.set(tabId, { presetId: preset.id })
   // 全部覆盖下发完成后才 reload，避免先加载出未模拟的页面。
   await chrome.tabs.reload(tabId)
 }
@@ -78,17 +145,6 @@ async function syncGlobalUserAgentRule(tabId: number, shouldSuspend: boolean) {
     suspendedTabs.delete(tabId)
     await resumeUserAgentRule()
   }
-}
-
-/**
- * 退出模拟的唯一入口：归还全局改写让位、分离调试会话、清空内存映射。
- * 浏览器会随分离清除全部模拟覆盖，因此不需要逐个撤销。
- * 退出与预设切换（#21）都走这里，标签页分组与 reload 由调用方负责。
- */
-async function exitSimulation(tabId: number) {
-  if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
-  appliedByTab.delete(tabId)
-  await chrome.debugger.detach({ tabId }).catch(() => {})
 }
 
 /**
@@ -118,6 +174,14 @@ async function savePresets(presets: BrowserPreset[]) {
 }
 
 export function registerBrowserPresetBackground() {
+  // 用户把标签页移出扩展分组即视为退出模拟；用户自建分组不在 ownedGroupIds 内，不受影响。
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.groupId === undefined) return
+    const applied = appliedByTab.get(tabId)
+    if (!applied || changeInfo.groupId === applied.groupId) return
+    void endSession(tabId)
+  })
+
   chrome.runtime.onMessage.addListener(
     (
       incoming: BrowserPresetRequest,
@@ -164,19 +228,29 @@ export function registerBrowserPresetBackground() {
         }
         if (message.type === "status") {
           const tabId = await targetTabId(sender)
-          return { ok: true, tabId, unavailableReason: await unavailableReasonFor(tabId) }
+          return {
+            ok: true,
+            tabId,
+            unavailableReason: await unavailableReasonFor(tabId),
+            presetId: appliedByTab.get(tabId)?.presetId
+          }
         }
         if (message.type === "apply") {
           const preset = presets.find((item) => item.id === message.id)
           if (!preset) throw new Error("预设不存在，可能已被删除")
-          await applyPreset(preset, await targetTabId(sender))
+          const tabId = await targetTabId(sender)
+          // 打断用户自建分组是有损操作，未经确认什么都不做。
+          if ((await inForeignGroup(tabId)) && message.confirmGroupMove !== true)
+            return { ok: false, needsGroupMoveConfirmation: true }
+          await applyPreset(preset, tabId)
           return { ok: true, preset }
         }
         // `simulate-exit` 与退出 UI 一起由 #21 接入；这里先固定退出路径，避免各处重写清理逻辑。
         if (message.type === "simulate-exit") {
           const tabId = await targetTabId(sender)
-          await exitSimulation(tabId)
-          await chrome.tabs.reload(tabId)
+          // `endSession` 只在确有会话时动作；这里补一次 reload，让已无会话的退出也刷新页面。
+          if (appliedByTab.has(tabId)) await endSession(tabId)
+          else await chrome.tabs.reload(tabId)
           return { ok: true, tabId }
         }
         throw new Error("未知的浏览器预设命令")
