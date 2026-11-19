@@ -49,9 +49,11 @@
 - `status` returns the same target tab plus `unavailableReason`, derived from `pageUnavailableReason()` in `src/cookie-editor/types.ts` and an attached `chrome.debugger` target. `apply` reuses that reasoning and refuses before attaching. The page disables the apply button and shows the reason while it is non-empty, so restriction and DevTools takeover are handled before the click.
 - `appliedByTab` is a module-level `Map<tabId, { presetId }>` in the background; it is memory only and clears on extension restart.
 - `src/browser-preset/validation.ts` is the single source of name uniqueness (trimmed, case-insensitive), the 200–4000 width/height bounds, and the 1–4 device scale factor. The background and the page share it, so the first error text matches in both.
+- `src/browser-preset/identity.ts` binds each built-in UA value to its `UserAgentIdentity`: the UA string comes from `USER_AGENT_OPTIONS`, joined by `navigator.platform` and a complete `userAgentMetadata`. No metadata field is left to a host fallback; Android identities send `bitness: ""` and Safari-class identities carry no metadata at all, so no `sec-ch-ua-*` headers are emitted. All versions stay on `Chrome/127`.
+- `mobileConflictOf` compares the identity's `metadata.mobile` with the preset's `viewport.mobile`. A disagreeing pair makes `create`/`update` return `needsConfirmation` plus the `MobileConflict` detail (`sec-ch-ua-mobile` value, layout treatment) and writes nothing; the page shows a confirmation dialog whose 确认风险 resends the same draft with `confirmConflict: true`, and whose 取消 keeps the form untouched. Stored values are never corrected silently.
 - `src/browser-preset/devices.ts` holds the device tiers. They only fill the viewport fields and are never stored.
-- `/browser-presets` renders `src/pages/BrowserPresets.tsx` from the Home card in both Popup and Options. First-time copy explains that applying a preset needs the debugger permission.
-- Tests exercise the protocol in `tests/browser-preset-background.test.ts`, the page in `tests/browser-presets-page.test.tsx`, and the Home card in `tests/home-browser-preset-entry.test.tsx`.
+- `/browser-presets` renders `src/pages/BrowserPresets.tsx` from the Home card in both Popup and Options. First-time copy explains that applying a preset needs the debugger permission. The device scale factor input uses `step="any"` because tiers such as the Pixel 8 send 2.625, which a fixed step would reject before the form submits.
+- Tests exercise the protocol in `tests/browser-preset-background.test.ts`, the identity packages in `tests/browser-preset-identity.test.ts`, the page in `tests/browser-presets-page.test.tsx`, and the Home card in `tests/home-browser-preset-entry.test.tsx`.
 
 ## Checks
 

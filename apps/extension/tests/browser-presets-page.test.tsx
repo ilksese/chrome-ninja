@@ -22,12 +22,26 @@ const preset = (patch: Partial<Preset> = {}): Preset => ({
   ...patch
 })
 
+// 只模拟两种已知冲突：Chrome Android（mobile 身份）配桌面布局，Chrome 桌面配移动端布局。
+const conflictOf = (draft: Omit<Preset, "id">) => {
+  const userAgentMobile = draft.userAgent === "chrome-android" ? true : draft.userAgent === "chrome-desktop" ? false : null
+  if (userAgentMobile === null || userAgentMobile === draft.viewport.mobile) return undefined
+  return {
+    userAgentMobile,
+    viewportMobile: draft.viewport.mobile,
+    secChUaMobile: userAgentMobile ? "?1" : "?0",
+    layout: draft.viewport.mobile ? "mobile" : "desktop"
+  }
+}
+
 const reply = (command: { type: string; [key: string]: unknown }) => {
   if (command.type === "list") return { ok: true, presets: structuredClone(presets) }
   if (command.type === "status") return { ok: true, tabId: 7, unavailableReason }
   if (command.type === "apply") return applyResult ?? { ok: true }
   if (command.type === "create" || command.type === "update") {
     const draft = command.preset as Omit<Preset, "id">
+    const conflict = conflictOf(draft)
+    if (conflict && command.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
     const id = (command.id as string | undefined) ?? `preset-${presets.length + 1}`
     const stored = { id, ...draft }
     presets = command.type === "create" ? [...presets, stored] : presets.map((item) => (item.id === id ? stored : item))
@@ -177,5 +191,63 @@ describe("浏览器预设页", () => {
     fireEvent.click(screen.getByRole("button", { name: "iPad mini" }))
     fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("存储写入失败")
+  })
+
+  it("移动端判定冲突时弹确认框并展示实际下发值与风险", async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
+    fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "安卓身份桌面布局" } })
+    fireEvent.change(screen.getByLabelText("User-Agent"), { target: { value: "chrome-android" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("sec-ch-ua-mobile")).toBeInTheDocument()
+    expect(within(dialog).getByText("?1")).toBeInTheDocument()
+    expect(within(dialog).getByText("按桌面端处理")).toBeInTheDocument()
+    expect(within(dialog).getByText(/指纹割裂/)).toBeInTheDocument()
+    expect(commands("create")).toHaveLength(1)
+    expect(commands("create")[0].confirmConflict).toBeUndefined()
+  })
+
+  it("确认风险后保存冲突配置并保留用户填写的 mobile", async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
+    fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "安卓身份桌面布局" } })
+    fireEvent.change(screen.getByLabelText("User-Agent"), { target: { value: "chrome-android" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "确认风险" }))
+
+    expect(await screen.findByText("安卓身份桌面布局")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(commands("create").at(-1)!.confirmConflict).toBe(true)
+    expect((commands("create").at(-1)!.preset as Preset).viewport.mobile).toBe(false)
+    expect(presets[0].viewport.mobile).toBe(false)
+  })
+
+  it("取消冲突确认后回到表单且不保存", async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
+    fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "安卓身份桌面布局" } })
+    fireEvent.change(screen.getByLabelText("User-Agent"), { target: { value: "chrome-android" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "取消" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("form", { name: "预设表单" })).toBeInTheDocument()
+    expect((screen.getByLabelText("预设名称") as HTMLInputElement).value).toBe("安卓身份桌面布局")
+    expect(commands("create")).toHaveLength(1)
+    expect(presets).toEqual([])
+  })
+
+  it("不冲突时保存不弹确认框", async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "新建预设" }))
+    fireEvent.input(screen.getByLabelText("预设名称"), { target: { value: "Pixel 调试" } })
+    fireEvent.change(screen.getByLabelText("User-Agent"), { target: { value: "chrome-android" } })
+    fireEvent.click(screen.getByRole("button", { name: "Pixel 8" }))
+    fireEvent.click(screen.getByRole("button", { name: "保存预设" }))
+
+    expect(await screen.findByText("Pixel 调试")).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 })

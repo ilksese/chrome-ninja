@@ -1,6 +1,7 @@
 import type { AppliedPreset, BrowserPreset, BrowserPresetRequest, BrowserPresetResponse } from "./types"
 import { pageUnavailableReason } from "@/cookie-editor/types"
 import { BROWSER_PRESETS_KEY } from "./types"
+import { mobileConflictOf } from "./identity"
 import { firstPresetError, validatePreset } from "./validation"
 
 /** 正在模拟的标签页；只活在后台内存里，扩展重启即清空。 */
@@ -74,6 +75,9 @@ export function registerBrowserPresetBackground() {
           const { draft, errors } = validatePreset(message.preset, presets)
           const error = firstPresetError(errors)
           if (error) throw new Error(error)
+          const conflict = mobileConflictOf(draft.userAgent, draft.viewport.mobile)
+          // 冲突且未确认时什么都不写：取消保存就是保持现状。
+          if (conflict && message.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
           const preset: BrowserPreset = { id: crypto.randomUUID(), ...draft }
           const next = [...presets, preset]
           await savePresets(next)
@@ -85,6 +89,8 @@ export function registerBrowserPresetBackground() {
           const { draft, errors } = validatePreset(message.preset, presets, message.id)
           const error = firstPresetError(errors)
           if (error) throw new Error(error)
+          const conflict = mobileConflictOf(draft.userAgent, draft.viewport.mobile)
+          if (conflict && message.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
           const id = existing.id
           const preset: BrowserPreset = { id, ...draft }
           const next = presets.map((item) => (item.id === id ? preset : item))
