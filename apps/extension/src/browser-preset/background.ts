@@ -24,6 +24,14 @@ const suspendedTabs = new Set<number>()
 /** 扩展自己创建的标签页分组；用户自建的分组永远不在此集合内。 */
 const ownedGroupIds = new Set<number>()
 
+/**
+ * 正在执行扩展自身分组变更的标签页。`chrome.tabs.group` 会异步派发 `tabs.onUpdated` 的
+ * `groupId` 变更，而派发可能早于调用方拿到新 id 并写入映射：此时事件既不对应映射里的旧分组，
+ * 新分组也还没进 `ownedGroupIds`，只看数据就会误判成「用户把标签页拖了出去」。
+ * 因此标记要覆盖从调用换组到写回映射的整段时间，事件在此期间一律忽略。
+ */
+const groupTransitions = new Set<number>()
+
 /** 被动终止后待展示的一次性提示；只活在后台内存里，被读取即清空。 */
 const notices = new Map<number, string>()
 
@@ -83,11 +91,16 @@ async function targetTabId(sender: chrome.runtime.MessageSender) {
   return tab.id
 }
 
-/** 返回标签页不能模拟的原因，空串表示可以模拟。DevTools 已占用调试器时无法附加。 */
+/**
+ * 返回标签页不能模拟的原因，空串表示可以模拟。DevTools 已占用调试器时无法附加。
+ * `getTargets` 不区分附加者：本扩展自己附加后该标签页同样 `attached: true`，
+ * 因此已在 `appliedByTab` 的标签页要排除在「DevTools 占用」之外，否则切换预设会永远被自己挡住。
+ */
 async function unavailableReasonFor(tabId: number) {
   const [tab, targets] = await Promise.all([chrome.tabs.get(tabId), chrome.debugger.getTargets()])
   const reason = pageUnavailableReason(tab.url)
   if (reason) return reason
+  if (appliedByTab.has(tabId)) return ""
   if (targets.some((target) => target.tabId === tabId && target.attached)) return "该标签页已打开 DevTools，无法模拟"
   return ""
 }
@@ -150,10 +163,19 @@ async function applyPreset(preset: BrowserPreset, tabId: number) {
   if (!reusing) await chrome.debugger.attach({ tabId }, "1.3")
   try {
     await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", preset.viewport)
+    // 「不覆盖」也必须考虑上一次的覆盖：复用会话时旧 UA 还留在标签页里，不显式清除就还是旧身份。
     if (identity) await applyUaOverride(tabId, identity)
-    const groupId = await joinPresetGroup(preset, tabId)
+    else if (reusing) await clearUaOverride(tabId)
+    // 换组到写回映射之间必然有一段旧映射与新归属不一致的窗口，扩展自己的事件必须在这段时间内被忽略。
+    groupTransitions.add(tabId)
+    let groupId: number
+    try {
+      groupId = await joinPresetGroup(preset, tabId)
+      appliedByTab.set(tabId, { presetId: preset.id, groupId })
+    } finally {
+      groupTransitions.delete(tabId)
+    }
     await syncGlobalUserAgentRule(tabId, Boolean(identity))
-    appliedByTab.set(tabId, { presetId: preset.id, groupId })
   } catch (error) {
     // 复用中的会话失败可能只是参数非法：保留已有会话与映射，退出模拟仍可正常分离。
     if (!reusing) {
@@ -198,6 +220,18 @@ async function applyUaOverride(tabId: number, identity: UserAgentIdentity) {
     "Emulation.setUserAgentOverride",
     userAgentMetadata ? { userAgent, platform, userAgentMetadata } : { userAgent, platform }
   )
+}
+
+/**
+ * 清除 UA 覆盖，回到宿主浏览器的真实身份。
+ * CDP 没有单独的 clear 命令，空 `userAgent` 就是「不覆盖」的表达：Chromium 的 `EmulationHandler`
+ * 只在 `user_agent_` 非空时改写 `User-Agent` 头、且空串时不再下发 client hints，
+ * Blink 侧同样在覆盖串为空时回退到真实 `navigator.userAgent`。
+ * 空串与 `platform`、`userAgentMetadata` 同时给出会被拒绝（"Empty userAgent invalid with userAgentMetadata provided"），
+ * 因此只传 `userAgent: ""`。`navigator.platform` 的覆盖值为空时也自动回退真实值，无需单独清除。
+ */
+async function clearUaOverride(tabId: number) {
+  await chrome.debugger.sendCommand({ tabId }, "Emulation.setUserAgentOverride", { userAgent: "" })
 }
 
 /**
@@ -247,8 +281,10 @@ function usageOf(presets: BrowserPreset[]): BrowserPresetUsage {
 
 export function registerBrowserPresetBackground() {
   // 用户把标签页移出扩展分组即视为退出模拟；用户自建分组不在 ownedGroupIds 内，不受影响。
+  // `chrome.tabs.group` 会异步发出 groupId 变更，事件可能在换组中途到达：进行中的换组一律忽略。
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.groupId === undefined) return
+    if (groupTransitions.has(tabId)) return
     const applied = appliedByTab.get(tabId)
     if (!applied || changeInfo.groupId === applied.groupId) return
     void endSession(tabId)
@@ -257,6 +293,12 @@ export function registerBrowserPresetBackground() {
   // DevTools 抢占、浏览器提示条取消与标签页关闭都会走到这里，来源需要按标签页反查。
   chrome.debugger.onDetach.addListener((source, reason) => {
     void attributeDetach(source, reason)
+  })
+
+  // 分组变空后由 Chrome 自己关闭；这里只负责把 id 从记账里去掉，避免下次应用时再去查一个已消失的分组。
+  // 用户自建分组的 id 从不在 `ownedGroupIds` 内，删除是空操作。
+  chrome.tabGroups.onRemoved.addListener((group) => {
+    ownedGroupIds.delete(group.id)
   })
 
   chrome.runtime.onMessage.addListener(
@@ -271,31 +313,23 @@ export function registerBrowserPresetBackground() {
         if (sender.id !== chrome.runtime.id) throw new Error("不受信任的扩展消息")
         const presets = await loadPresets()
         if (message.type === "list") return { ok: true, presets, usage: usageOf(presets) }
-        if (message.type === "create") {
-          const { draft, errors } = validatePreset(message.preset, presets)
-          const error = firstPresetError(errors)
-          if (error) throw new Error(error)
-          const conflict = mobileConflictOf(draft.userAgent, draft.viewport.mobile)
-          // 冲突且未确认时什么都不写：取消保存就是保持现状。
-          if (conflict && message.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
-          const preset: BrowserPreset = { id: crypto.randomUUID(), ...draft }
-          const next = [...presets, preset]
-          await savePresets(next)
-          return { ok: true, preset, presets: next, usage: usageOf(next) }
-        }
-        if (message.type === "update") {
-          const existing = presets.find((preset) => preset.id === message.id)
-          if (!existing) throw new Error("预设不存在，可能已被删除")
+        if (message.type === "create" || message.type === "update") {
+          const existing =
+            message.type === "update" ? presets.find((preset) => preset.id === message.id) : undefined
+          if (message.type === "update" && !existing) throw new Error("预设不存在，可能已被删除")
           // 编辑与重命名走同一条命令，锁定必须在写入前拒绝，不能指望页面藏按钮。
-          assertPresetUnused(existing.id)
-          const { draft, errors } = validatePreset(message.preset, presets, message.id)
+          if (existing) assertPresetUnused(existing.id)
+          const { draft, errors } = validatePreset(message.preset, presets, existing?.id)
           const error = firstPresetError(errors)
           if (error) throw new Error(error)
+          // 冲突且未确认时什么都不写：取消保存就是保持现状。
           const conflict = mobileConflictOf(draft.userAgent, draft.viewport.mobile)
           if (conflict && message.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
-          const id = existing.id
-          const preset: BrowserPreset = { id, ...draft }
-          const next = presets.map((item) => (item.id === id ? preset : item))
+          // 新建分配新 id；更新保留原 id，重命名不改稳定标识。
+          const preset: BrowserPreset = { id: existing?.id ?? crypto.randomUUID(), ...draft }
+          const next = existing
+            ? presets.map((item) => (item.id === preset.id ? preset : item))
+            : [...presets, preset]
           await savePresets(next)
           return { ok: true, preset, presets: next, usage: usageOf(next) }
         }

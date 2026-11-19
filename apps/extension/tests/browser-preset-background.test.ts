@@ -24,6 +24,11 @@ let groupRemoved: (group: chrome.tabGroups.TabGroup) => void
 let debuggerDetached: (source: chrome.debugger.Debuggee, reason: string) => void
 /** 已关闭的标签页：反查它们时与 Chrome 一样抛错。 */
 let closedTabs: Set<number>
+/**
+ * 调试器已附加的标签页。Chrome 的 `getTargets` 不区分附加者是谁：扩展自己附加后，
+ * 该标签页的 target 同样是 `attached: true`。模拟必须复现这一点，否则自附加会误判成 DevTools。
+ */
+let attachedTabs: Set<number>
 const sender = { id: "extension" } as chrome.runtime.MessageSender
 const popupSender = { id: "extension", url: "chrome-extension://extension/index.html" } as chrome.runtime.MessageSender
 /** 对第二个标签页发起命令时的发送方；目标标签页由发送方推导。 */
@@ -79,6 +84,7 @@ beforeEach(async () => {
   tabGroupIds = new Map()
   groups = new Map()
   closedTabs = new Set()
+  attachedTabs = new Set()
   nextGroupId = 100
   vi.resetModules()
   vi.stubGlobal("chrome", {
@@ -141,6 +147,9 @@ beforeEach(async () => {
           const before = tabGroupIds.get(tabId)
           if (before !== undefined) previous.add(before)
           tabGroupIds.set(tabId, groupId)
+          // 与 Chrome 一致：改归属会异步发出 tabs.onUpdated 的 groupId 变更。
+          // 事件在 group() 返回之后才派发，因此后台不能靠调用顺序假设自己已经写完映射。
+          queueMicrotask(() => tabUpdated?.(tabId, { groupId }))
         }
         // 与 Chrome 一致：加入新分组会把标签页移出原分组，空掉的分组随即关闭。
         for (const groupId of previous) closeGroupIfEmpty(groupId)
@@ -181,12 +190,25 @@ beforeEach(async () => {
       }
     },
     debugger: {
-      getTargets: vi.fn(async (): Promise<chrome.debugger.TargetInfo[]> => []),
+      // 与 Chrome 一致：target 列表包含所有已附加的标签页，包括本扩展自己附加的那些。
+      getTargets: vi.fn(
+        async (): Promise<chrome.debugger.TargetInfo[]> =>
+          [...attachedTabs].map((tabId) => ({
+            type: "page",
+            id: `target-${tabId}`,
+            tabId,
+            attached: true,
+            title: "示例",
+            url: tabUrl
+          }))
+      ),
       attach: vi.fn(async (target: chrome.debugger.Debuggee) => {
         commands.push(["attach", target])
+        if (target.tabId !== undefined) attachedTabs.add(target.tabId)
       }),
       detach: vi.fn(async (target: chrome.debugger.Debuggee) => {
         commands.push(["detach", target])
+        if (target.tabId !== undefined) attachedTabs.delete(target.tabId)
         // 与 Chrome 一致：主动分离也会触发 onDetach。
         debuggerDetached?.(target, "canceled_by_user")
       }),
@@ -463,6 +485,23 @@ describe("标签页分组生命周期", () => {
     expect(chrome.tabs.group).toHaveBeenLastCalledWith({ tabIds: [7], groupId: ownGroupId })
   })
 
+  // 分组变空后 Chrome 自己关闭它；扩展只需把这个 id 从记账里去掉，不必再尝试查询一个已消失的分组。
+  it("扩展分组变空关闭后立即从记账中移除", async () => {
+    const preset = await create({ name: "iPhone 15" })
+    await apply(preset.id)
+    const ownGroupId = tabGroupIds.get(7)!
+    userMovesTabOut(7)
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    // 空分组已被 Chrome 关闭，记账同步清空。
+    expect(groups.has(ownGroupId)).toBe(false)
+
+    // 再次应用时不该再去读那个已消失的分组：清空后的记账让查找直接命中不了任何 id。
+    vi.mocked(chrome.tabGroups.get).mockClear()
+    const response = await apply(preset.id)
+    expect(response.ok, response.error).toBe(true)
+    for (const [groupId] of vi.mocked(chrome.tabGroups.get).mock.calls) expect(groupId).not.toBe(ownGroupId)
+  })
+
   it("用户把标签页移出扩展分组即视为退出模拟", async () => {
     const preset = await create({ name: "iPhone 15" })
     await apply(preset.id)
@@ -517,7 +556,7 @@ describe("标签页分组生命周期", () => {
     expect(tabGroupIds.get(7)).toBe(9)
   })
 
-  it("确认后把标签页移出用户自建分组并归入预设分组", async () => {
+  it("确认后把标签页移出用户自建分组并归入模拟分组", async () => {
     const preset = await create({ name: "iPhone 15" })
     groups.set(9, "我的分组")
     tabGroupIds.set(7, 9)
@@ -746,6 +785,34 @@ describe("在已模拟的标签页上应用另一个预设", () => {
       { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
     ])
   })
+
+  // 从具体 UA 切到「不覆盖」时，上一次的 UA 覆盖仍在会话里；必须显式清掉，否则 navigator.userAgent 保持旧身份。
+  it("切换到不覆盖 UA 的预设时清除上一次的 UA 覆盖", async () => {
+    const android = await create({
+      name: "Pixel 8",
+      userAgent: "chrome-android",
+      viewport: { width: 412, height: 915, deviceScaleFactor: 2.625, mobile: true }
+    })
+    const viewportOnly = await create({ name: "只测视口", userAgent: "default" })
+    await request({ type: "apply", id: android.id }, popupSender)
+    commands = []
+
+    const switched = await request({ type: "apply", id: viewportOnly.id }, popupSender)
+    expect(switched.ok, switched.error).toBe(true)
+    // CDP 只认空串为「恢复真实 UA」；不带 platform 与 metadata，client hints 也一并回到宿主值。
+    expect(commands).toContainEqual(["Emulation.setUserAgentOverride", { userAgent: "" }])
+  })
+
+  it("从具体 UA 切换到另一个具体 UA 时不发送清空", async () => {
+    const android = await create({ name: "Pixel 8", userAgent: "chrome-android" })
+    const safari = await create({ name: "Safari", userAgent: "safira-ios" })
+    await request({ type: "apply", id: android.id }, popupSender)
+    commands = []
+
+    await request({ type: "apply", id: safari.id }, popupSender)
+    expect(commands.filter(([method]) => method === "Emulation.setUserAgentOverride")).toHaveLength(1)
+    expect(commands).not.toContainEqual(["Emulation.setUserAgentOverride", { userAgent: "" }])
+  })
 })
 
 describe("应用预设", () => {
@@ -893,6 +960,50 @@ describe("应用预设", () => {
     const response = await request({ type: "status" }, popupSender)
     expect(response.ok, response.error).toBe(true)
     expect(response.unavailableReason).toBe("")
+  })
+
+  // 扩展自己附加后，target 同样是 attached：这不代表 DevTools 占用，不能据此报不可用。
+  it("扩展自己附加后的状态不报 DevTools 占用", async () => {
+    const created = await request({ type: "create", preset: draft() })
+    await request({ type: "apply", id: created.preset!.id }, popupSender)
+    expect(attachedTabs.has(7)).toBe(true)
+
+    const response = await request({ type: "status" }, popupSender)
+    expect(response.ok, response.error).toBe(true)
+    expect(response.unavailableReason).toBe("")
+  })
+
+  it("扩展自己附加后仍可切换到另一个预设", async () => {
+    const first = await request({ type: "create", preset: draft() })
+    const second = await request({ type: "create", preset: draft({ name: "Pixel 8", userAgent: "chrome-android" }) })
+    await request({ type: "apply", id: first.preset!.id }, popupSender)
+    commands = []
+
+    const switched = await request({ type: "apply", id: second.preset!.id }, popupSender)
+    expect(switched.ok, switched.error).toBe(true)
+    expect(commands).toContainEqual([
+      "Emulation.setDeviceMetricsOverride",
+      { width: 393, height: 852, deviceScaleFactor: 3, mobile: true }
+    ])
+  })
+
+  // 用户把标签页拖进另一个扩展分组，仍然是「离开了自己的分组」，必须退出模拟；
+  // 忽略自己换组事件的机制不能顺带吞掉这种用户动作。
+  it("用户把标签页拖进另一个扩展分组同样退出模拟", async () => {
+    const first = await request({ type: "create", preset: draft() })
+    const second = await request({ type: "create", preset: draft({ name: "Pixel 8", userAgent: "chrome-android" }) })
+    // 另一个预设的模拟分组必须真实存在，才能作为用户的拖放目标。
+    await request({ type: "apply", id: second.preset!.id }, secondTabSender)
+    await request({ type: "apply", id: first.preset!.id }, popupSender)
+    const otherGroupId = tabGroupIds.get(8)!
+    commands = []
+
+    // 绕过扩展自己的建组逻辑，直接模拟用户拖动后 Chrome 发出的归属变更。
+    tabGroupIds.set(7, otherGroupId)
+    tabUpdated?.(7, { groupId: otherGroupId })
+    await vi.waitFor(() => expect(commands).toContainEqual(["reload", { tabId: 7 }]))
+    expect(commands).toContainEqual(["detach", { tabId: 7 }])
+    expect(await request({ type: "status" }, popupSender)).toMatchObject({ presetId: undefined })
   })
 
   it("标签页已打开 DevTools 时状态给出原因", async () => {

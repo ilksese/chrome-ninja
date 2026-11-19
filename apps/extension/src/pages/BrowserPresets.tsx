@@ -90,6 +90,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [applyingId, setApplyingId] = useState("")
   const [stoppingId, setStoppingId] = useState("")
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
+  // 标签页在用户自建分组里：应用前必须由用户确认这场有损的移出。
+  const [pendingGroupMove, setPendingGroupMove] = useState<BrowserPreset | null>(null)
   const [conflict, setConflict] = useState<MobileConflict | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
@@ -100,12 +102,17 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     []
   )
 
+  /** 列表与使用数量总是成对下发，页面也必须成对更新；统一走这里避免两处漏写。 */
+  const applyList = (response: BrowserPresetResponse) => {
+    setPresets(response.presets ?? [])
+    setUsage(response.usage ?? {})
+  }
+
   const refresh = useCallback(async () => {
     try {
       const response = await send({ type: "list" })
       if (!response?.ok) throw new Error(response?.error ?? "无法读取预设列表")
-      setPresets(response.presets ?? [])
-      setUsage(response.usage ?? {})
+      applyList(response)
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法读取预设列表")
     } finally {
@@ -194,8 +201,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
         return
       }
       if (!response?.ok) throw new Error(response?.error ?? "保存失败")
-      setPresets(response.presets ?? [])
-      setUsage(response.usage ?? {})
+      applyList(response)
       closeForm()
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败")
@@ -213,8 +219,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     try {
       const response = await send({ type: "delete", id: pendingDelete.id })
       if (!response?.ok) throw new Error(response?.error ?? "删除失败")
-      setPresets(response.presets ?? [])
-      setUsage(response.usage ?? {})
+      applyList(response)
       setPendingDelete(null)
       requestAnimationFrame(() => deleteTriggerRef.current?.focus())
     } catch (err) {
@@ -222,14 +227,27 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     }
   }
 
-  const applyPreset = async (preset: BrowserPreset) => {
+  /**
+   * 应用预设。标签页已在用户自建分组时，后台返回 `needsGroupMoveConfirmation` 且未做任何改动；
+   * 此时先弹确认框，用户确认后带着 `confirmGroupMove` 重发同一条命令。
+   */
+  const applyPreset = async (preset: BrowserPreset, confirmGroupMove = false) => {
     if (tabReason) return
     setError("")
     setNotice("")
     setApplyingId(preset.id)
     try {
-      const response = await send({ type: "apply", id: preset.id })
+      const response = await send({
+        type: "apply",
+        id: preset.id,
+        ...(confirmGroupMove ? { confirmGroupMove: true } : {})
+      })
+      if (response?.needsGroupMoveConfirmation) {
+        setPendingGroupMove(preset)
+        return
+      }
       if (!response?.ok) throw new Error(response?.error ?? "应用预设失败")
+      setPendingGroupMove(null)
       setSimulatingId(preset.id)
       // 应用改变了使用数量，锁定态与「正在 N 个标签页使用」必须立刻反映出来。
       void refresh()
@@ -240,6 +258,9 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       setApplyingId("")
     }
   }
+
+  // 取消只关闭确认框：后台没有做任何改动，标签页仍留在用户自己的分组里。
+  const cancelGroupMove = () => setPendingGroupMove(null)
 
   // 退出模拟不依赖 tabReason：受限原因只拦应用，退出随时可用。
   const exitSimulation = async () => {
@@ -269,8 +290,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     try {
       const response = await send({ type: "stop", id: preset.id })
       if (!response?.ok) throw new Error(response?.error ?? "停止失败")
-      setPresets(response.presets ?? [])
-      setUsage(response.usage ?? {})
+      applyList(response)
       // 停止会退出包括当前标签页在内的所有使用者，模拟状态与本地状态一并清空。
       setSimulatingId(undefined)
       setNotice(`已停止「${preset.name}」`)
@@ -626,6 +646,34 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
             disabled={saving}
             onClick={() => void save(true)}>
             确认风险
+          </button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={!!pendingGroupMove}
+        titleId="preset-group-move-title"
+        onClose={cancelGroupMove}
+        panelClassName="max-w-[335px] rounded-[14px] p-4 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <h2 id="preset-group-move-title" className="text-base font-semibold leading-5 text-slate-950">
+          移出当前分组
+        </h2>
+        <p className="mt-2 text-sm leading-5 text-slate-600">
+          当前标签页已属于你自己创建的分组。应用「{pendingGroupMove?.name}」会把它移出该分组，并归入模拟分组。
+        </p>
+        <div className="mt-4 flex gap-3">
+          <button
+            className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100"
+            type="button"
+            onClick={cancelGroupMove}>
+            取消
+          </button>
+          <button
+            className="flex-1 rounded-xl bg-[#101828] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054] disabled:opacity-60"
+            type="button"
+            disabled={applyingId === pendingGroupMove?.id}
+            onClick={() => pendingGroupMove && void applyPreset(pendingGroupMove, true)}>
+            移出并应用
           </button>
         </div>
       </Dialog>
