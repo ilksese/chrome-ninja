@@ -16,9 +16,37 @@ export type BrowserPreset = {
 
 export type BrowserPresetDraft = Omit<BrowserPreset, "id">
 
+export type UserAgentMetadata = {
+  brands: { brand: string; version: string }[]
+  fullVersionList: { brand: string; version: string }[]
+  platform: string
+  platformVersion: string
+  architecture: string
+  model: string
+  mobile: boolean
+  bitness: string
+  wow64: boolean
+  formFactors: string[]
+}
+
+/** 内置 UA 身份包：预设只存枚举值，身份在应用时查表得到。Safari 类身份没有 metadata。 */
+export type UserAgentIdentity = {
+  userAgent: string
+  platform: string
+  userAgentMetadata?: UserAgentMetadata
+}
+
+/** 移动端判定冲突的详情，供预设页解释「实际发什么」与风险。 */
+export type MobileConflict = {
+  userAgentMobile: boolean
+  viewportMobile: boolean
+  secChUaMobile: "?0" | "?1"
+  layout: "mobile" | "desktop"
+}
+
 export type BrowserPresetCommand =
   | { type: "list" }
-  | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string }
+  | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string; confirmConflict?: boolean }
   | { type: "delete"; id: string }
 
 export type BrowserPresetRequest = { target: "browser-preset" } & BrowserPresetCommand
@@ -26,6 +54,9 @@ export type BrowserPresetRequest = { target: "browser-preset" } & BrowserPresetC
 export type BrowserPresetResponse = {
   ok: boolean
   error?: string
+  /** 移动端判定冲突：本次未写入任何内容，需要用户确认后带 `confirmConflict` 重发。 */
+  needsConfirmation?: boolean
+  conflict?: MobileConflict
   presets?: BrowserPreset[]
   preset?: BrowserPreset
 }

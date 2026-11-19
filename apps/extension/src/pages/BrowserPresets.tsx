@@ -1,4 +1,9 @@
-import type { BrowserPreset, BrowserPresetDraft, BrowserPresetResponse } from "@/browser-preset/types"
+import type {
+  BrowserPreset,
+  BrowserPresetDraft,
+  BrowserPresetResponse,
+  MobileConflict
+} from "@/browser-preset/types"
 import type { PresetField, PresetFieldErrors } from "@/browser-preset/validation"
 import type { UserAgentType } from "@/types"
 import { useCallback, useEffect, useRef, useState } from "preact/hooks"
@@ -77,6 +82,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
+  const [conflict, setConflict] = useState<MobileConflict | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
 
@@ -115,6 +121,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     setError("")
     setSubmitted(false)
     setTouched([])
+    setConflict(null)
     setForm({ ...EMPTY_FORM })
   }
 
@@ -122,6 +129,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     setError("")
     setSubmitted(false)
     setTouched([])
+    setConflict(null)
     setForm(toForm(preset))
   }
 
@@ -129,6 +137,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     setForm(null)
     setSubmitted(false)
     setTouched([])
+    setConflict(null)
   }
 
   const { errors } = form ? validatePreset(toDraft(form), presets, form.id) : { errors: {} }
@@ -138,7 +147,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   ) as PresetFieldErrors
   const canSave = !!form && !firstPresetError(errors) && !saving
 
-  const save = async () => {
+  const save = async (confirmConflict = false) => {
     if (!form) return
     setSubmitted(true)
     if (firstPresetError(errors)) return
@@ -148,8 +157,14 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({
         type: form.id ? "update" : "create",
         ...(form.id ? { id: form.id } : {}),
+        ...(confirmConflict ? { confirmConflict: true } : {}),
         preset: toDraft(form)
       })
+      // 冲突时后台未写入任何内容，先交由用户确认；确认后带着标记重发同一份草稿。
+      if (response?.needsConfirmation) {
+        setConflict(response.conflict ?? null)
+        return
+      }
       if (!response?.ok) throw new Error(response?.error ?? "保存失败")
       setPresets(response.presets ?? [])
       closeForm()
@@ -159,6 +174,9 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       setSaving(false)
     }
   }
+
+  // 取消只关闭确认框：表单与用户填写的值保持原样，存储未被改动。
+  const cancelConflict = () => setConflict(null)
 
   const confirmDelete = async () => {
     if (!pendingDelete) return
@@ -317,7 +335,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                     className={cn(fieldClass, visibleErrors.deviceScaleFactor && "border-red-400 focus:border-red-500")}
                     type="number"
                     inputMode="decimal"
-                    step="0.5"
+                    // 档位里的 2.625 这类像素比不是 0.5 的整数倍；固定 step 会让表单校验失败并拦下隐式提交。
+                    step="any"
                     min={DEVICE_SCALE_MIN}
                     max={DEVICE_SCALE_MAX}
                     value={form.deviceScaleFactor}
@@ -408,6 +427,53 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
           )}
         </section>
       )}
+
+      <Dialog
+        open={!!conflict}
+        titleId="preset-conflict-title"
+        onClose={cancelConflict}
+        panelClassName="max-w-[335px] rounded-[14px] p-4 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <h2 id="preset-conflict-title" className="text-base font-semibold leading-5 text-slate-950">
+          确认保存冲突的移动端判定
+        </h2>
+        <p className="mt-2 text-sm leading-5 text-slate-600">
+          UA 身份与视图开关对移动端的判定不一致，保存后站点可以据此判定为伪装。
+        </p>
+        <dl className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5">
+          <div className="flex gap-2">
+            <dt className="shrink-0 font-medium text-slate-500">sec-ch-ua-mobile</dt>
+            <dd className="min-w-0 text-slate-900">{conflict?.secChUaMobile}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 font-medium text-slate-500">布局</dt>
+            <dd className="min-w-0 text-slate-900">
+              按{conflict?.layout === "mobile" ? "移动端" : "桌面端"}处理
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 font-medium text-slate-500">风险</dt>
+            <dd className="min-w-0 text-slate-900">
+              UA 身份声明{conflict?.userAgentMobile ? "移动端" : "桌面端"}，视图开关却是
+              {conflict?.viewportMobile ? "移动端" : "桌面端"}，两者不一致会让站点识别出指纹割裂，可能被判为伪装或返回不一致的资源。
+            </dd>
+          </div>
+        </dl>
+        <div className="mt-4 flex gap-3">
+          <button
+            className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100"
+            type="button"
+            onClick={cancelConflict}>
+            取消
+          </button>
+          <button
+            className="flex-1 rounded-xl bg-[#b42318] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#912018] active:bg-[#7a1a13] disabled:opacity-60"
+            type="button"
+            disabled={saving}
+            onClick={() => void save(true)}>
+            确认风险
+          </button>
+        </div>
+      </Dialog>
 
       <Dialog
         open={!!pendingDelete}
