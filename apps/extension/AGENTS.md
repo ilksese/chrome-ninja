@@ -31,7 +31,7 @@
 - Mount directly into webpage DOM. Do not introduce Shadow DOM, iframe isolation, or `!important`; host styles overriding content UI are an accepted boundary.
 - Use the shared mounting and scope helpers. Feature views expose `dispose()`; unmounting must remove DOM and release global listeners, subscriptions, timers, and other owned resources. Repeated toggles must not accumulate mounts or listeners.
 - Update locally and reuse stable nodes to preserve focus, selection, scroll positions, and panel dimensions. Preserve existing business behavior, message protocols, and frame-specific responsibilities.
-- Mark every UI root with `data-chrome-ninja-ui` and exclude its clicks, input, and scroll from recording via `isContentUIEvent`. Handle propagation only where the feature needs it.
+- Movable, resizable panels (Cookie editor, network monitor, step recorder) use `src/content-ui/panel-geometry.ts` to load geometry before mounting, share title-bar dragging, and save only after a drag changes position or native resize changes inline dimensions and actual size. Each panel has an independent `chrome.storage.local` key (`contentUiPanelLayouts.<panel-key>`) shared across sites and tabs; restoration and dragging use the same 8px viewport margin and per-panel minimum sizes, reduced when the viewport is smaller.- Mark every UI root with `data-chrome-ninja-ui` and exclude its clicks, input, and scroll from recording via `isContentUIEvent`. Handle propagation only where the feature needs it.
 - Reuse the shared Toast for both normal copy feedback and the independently injected failure entry. Browser-restricted pages retain best-effort logging; this path does not bypass injection restrictions.
 
 ## Cookie Editor
