@@ -82,22 +82,33 @@ async function inForeignGroup(tabId: number) {
   return groupId >= 0 && !ownedGroupIds.has(groupId)
 }
 
-/** 退出模拟：分离（Chromium 会清除全部模拟覆盖）→ 重新加载，会话映射同时清空。 */
+/**
+ * 退出模拟的唯一收尾路径：分离（Chromium 随分离清除全部模拟覆盖）→ 离开模拟分组
+ * → 重新加载，最后清空内存映射。标题相同的用户自建分组不在 `ownedGroupIds` 内，不会被认领。
+ * 用户移出分组触发的退出与页面/首页发起的退出共用这里。
+ */
 async function endSession(tabId: number) {
-  if (!appliedByTab.has(tabId)) return
+  const applied = appliedByTab.get(tabId)
+  if (!applied) return
   appliedByTab.delete(tabId)
   await chrome.debugger.detach({ tabId }).catch(() => {})
+  // ungroup 只处理仍在扩展分组内的标签页；分组空掉后 Chrome 会自行关闭。
+  await chrome.tabs.ungroup(tabId).catch(() => {})
   await chrome.tabs.reload(tabId).catch(() => {})
 }
 
 async function applyPreset(preset: BrowserPreset, tabId: number) {
   const reason = await unavailableReasonFor(tabId)
   if (reason) throw new Error(reason)
-  await chrome.debugger.attach({ tabId }, "1.3")
+  // 已在本扩展的调试会话里时只覆盖参数：重新 attach 会让浏览器重弹调试提示条。
+  // 会话随标签页存续，因此只要 appliedByTab 有记录就认定会话仍可用；真掉线时 sendCommand 会失败。
+  const reusing = appliedByTab.has(tabId)
+  if (!reusing) await chrome.debugger.attach({ tabId }, "1.3")
   try {
     await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", preset.viewport)
   } catch (error) {
-    await chrome.debugger.detach({ tabId }).catch(() => {})
+    // 复用中的会话失败可能只是参数非法，此时保留已有会话，退出模拟仍可正常分离。
+    if (!reusing) await chrome.debugger.detach({ tabId }).catch(() => {})
     appliedByTab.delete(tabId)
     throw error
   }
@@ -188,6 +199,11 @@ export function registerBrowserPresetBackground() {
             return { ok: false, needsGroupMoveConfirmation: true }
           await applyPreset(preset, tabId)
           return { ok: true, preset }
+        }
+        if (message.type === "simulate-exit") {
+          const tabId = await targetTabId(sender)
+          await endSession(tabId)
+          return { ok: true, tabId }
         }
         throw new Error("未知的浏览器预设命令")
       }

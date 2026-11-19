@@ -49,6 +49,7 @@ export type BrowserPresetCommand =
   | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string; confirmConflict?: boolean }
   | { type: "delete"; id: string }
   | { type: "apply"; id: string; confirmGroupMove?: boolean }
+  | { type: "simulate-exit" }
   | { type: "status" }
 
 export type BrowserPresetRequest = { target: "browser-preset" } & BrowserPresetCommand

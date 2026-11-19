@@ -12,6 +12,8 @@ type Preset = {
 let presets: Preset[] = []
 let sendMessage = vi.fn()
 let unavailableReason = ""
+let simulatingId: string | undefined
+let exitResult: { ok: boolean; error?: string } | undefined
 let applyResult: { ok: boolean; error?: string } | undefined
 
 const preset = (patch: Partial<Preset> = {}): Preset => ({
@@ -36,8 +38,14 @@ const conflictOf = (draft: Omit<Preset, "id">) => {
 
 const reply = (command: { type: string; [key: string]: unknown }) => {
   if (command.type === "list") return { ok: true, presets: structuredClone(presets) }
-  if (command.type === "status") return { ok: true, tabId: 7, unavailableReason }
+  if (command.type === "status")
+    return { ok: true, tabId: 7, unavailableReason, ...(simulatingId ? { presetId: simulatingId } : {}) }
   if (command.type === "apply") return applyResult ?? { ok: true }
+  if (command.type === "simulate-exit") {
+    if (exitResult && !exitResult.ok) return exitResult
+    simulatingId = undefined
+    return { ok: true, tabId: 7 }
+  }
   if (command.type === "create" || command.type === "update") {
     const draft = command.preset as Omit<Preset, "id">
     const conflict = conflictOf(draft)
@@ -62,6 +70,8 @@ const commands = (type: string) =>
 beforeEach(() => {
   presets = []
   unavailableReason = ""
+  simulatingId = undefined
+  exitResult = undefined
   applyResult = undefined
   sendMessage = vi.fn(async (command: { type: string; [key: string]: unknown }) => reply(command))
   vi.stubGlobal("chrome", {
@@ -249,5 +259,25 @@ describe("浏览器预设页", () => {
 
     expect(await screen.findByText("Pixel 调试")).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+})
+
+describe("浏览器预设页退出模拟", () => {
+  it("未在模拟时显示「当前没有模拟」且不提供退出按钮", async () => {
+    presets = [preset()]
+    renderPage()
+    expect(await screen.findByText("当前没有模拟")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /退出模拟/ })).not.toBeInTheDocument()
+  })
+
+  it("正在模拟时显示预设名并提供退出模拟", async () => {
+    presets = [preset()]
+    simulatingId = "preset-1"
+    renderPage()
+    expect(await screen.findByText("正在模拟「iPhone 15」")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "退出模拟" }))
+    expect(await screen.findByRole("status")).toHaveTextContent("已退出模拟")
+    expect(commands("simulate-exit")).toHaveLength(1)
+    expect(screen.getByText("当前没有模拟")).toBeInTheDocument()
   })
 })
