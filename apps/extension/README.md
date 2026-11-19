@@ -90,7 +90,7 @@ pnpm --filter @chrome-ninja/extension build
 
 ## 开发自动刷新
 
-`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；之后构建完成会自动刷新相关界面或整个扩展。
+`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；之后构建完成会自动刷新相关界面或整个扩展。开发版的工具栏图标显示 `dev` 徽章，不依赖开发桥是否连接；普通 `pnpm build` 的产物不显示徽章。
 
 构建使用 CRXJS 2.7.1。开发模式关闭 Rollup 构建缓存，让每轮构建重新生成 Manifest 和动态 Content Script 的文件引用，避免增量构建沿用失效引用而中断刷新；生产构建保留默认缓存设置。
 

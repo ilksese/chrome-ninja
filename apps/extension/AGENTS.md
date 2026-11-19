@@ -7,7 +7,7 @@
 - Background service worker entry is `src/background/index.ts`.
 - Content scripts for element copying, translation, video sniffing, recording, and network monitoring are registered separately in `manifest.config.ts`.
 - `src/content-script/index.ts` connects the top-level page to `@chrome-ninja/dev-bridge/client`; keep it independent of feature handlers.
-- `pnpm dev` watches extension builds and reloads affected contexts through dev-bridge. Development backgrounds open the toolbar popup on first connection and after client/tab reloads; production builds do not enable this behavior.
+- `pnpm dev` watches extension builds and reloads affected contexts through dev-bridge. The background uses `DEV_BRIDGE_ENABLED` to set the toolbar badge to `dev` independently of the bridge connection, and clears the badge in production builds. Development backgrounds open the toolbar popup on first connection and after client/tab reloads; production builds do not enable this behavior.
 - Development bridge builds disable Rollup cache so CRXJS regenerates manifest and dynamic content-script references on every rebuild. Validate at least two consecutive rebuilds when changing the development build flow.
 - Home page feature entry points stay card-based. Cookie editor opens its webpage panel; other detailed editing workflows use modal dialogs.
 
