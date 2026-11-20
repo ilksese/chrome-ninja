@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "preact/hooks"
 import { useNavigate } from "react-router-dom"
 import logoIcon from "@assets/mdlogo.png"
 import Dialog from "@components/Dialog"
+import HomeFeatureList from "@components/HomeFeatureList"
 import CookieEditor from "@components/settings/CookieEditor"
 import LoginStateExport from "@components/settings/LoginStateExport"
 import QrPanel from "@/qr/panel"
@@ -18,6 +19,7 @@ type HomeProps = {
 }
 
 const HOME_INTRO_STORAGE_KEY = "homeIntroSeen"
+const FEATURE_BUTTON_CLASS = "flex min-h-15 w-full items-center gap-3 py-2.5 pr-3 text-left transition-colors hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60"
 
 const USER_AGENT_HINTS: Record<UserAgentType, string> = {
   default: "跟随当前浏览器，不额外改写请求身份。",
@@ -184,7 +186,7 @@ const Home = ({ layout }: HomeProps) => {
     chrome.storage?.local.set({ [HOME_INTRO_STORAGE_KEY]: true }, () => {})
   }
 
-  // 首页卡片只读当前标签页的模拟状态：状态由后台内存决定，预设名从列表里反查。
+  // 首页入口只读当前标签页的模拟状态：状态由后台内存决定，预设名从列表里反查。
   const refreshSimulation = async () => {
     try {
       const status = (await chrome.runtime.sendMessage({ target: "browser-preset", type: "status" })) as
@@ -439,171 +441,268 @@ const Home = ({ layout }: HomeProps) => {
   }
 
   return (
-    <div className={cn("Home relative", isOptions ? "grid grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)] gap-6 max-[900px]:block" : "space-y-3")}>
-      <section className={cn("overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(16,24,40,0.12)]", isOptions && "grid grid-cols-[0.92fr_1.08fr] max-[900px]:block") }>
-        <div className={cn(isOptions ? "px-4 pb-4 pt-4" : "px-3.5 pb-3 pt-3.5") }>
-          <div className={cn("flex items-center justify-between gap-3", isOptions ? "mb-4" : "mb-3") }>
-            <span className="min-w-0 flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white shadow-sm">
-                <img className="size-7" src={logoIcon} alt="chrome ninja" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">chrome ninja</span>
-                <span className="block text-[15px] font-semibold leading-5 text-slate-950">控制面板</span>
-              </span>
+    <div className="Home relative">
+      <section className="bg-white">
+        <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3">
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white shadow-sm">
+              <img className="size-7" src={logoIcon} alt="chrome ninja" />
             </span>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">运行中</span>
-          </div>
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">chrome ninja</span>
+              <span className="block text-[15px] font-semibold leading-5 text-slate-950">控制面板</span>
+            </span>
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            运行中
+          </span>
+        </header>
 
-          {/* 隐式 auto 列的下限是子项的 min-content，卡片的 truncate 文本会把它顶出容器并裁掉右缘。 */}
-          <div className={cn("grid gap-3", isOptions ? "grid-cols-[minmax(0,1fr)_160px]" : "grid-cols-[minmax(0,1fr)]") }>
-            <button
-              ref={triggerRef}
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60"
-              type="button"
-              disabled={isApplying || !!simulatingPreset}
-              onClick={openUserAgentDialog}>
-              <span className="grid size-10 place-items-center rounded-xl bg-[#101828] text-sm font-semibold text-white shadow-[0_10px_22px_rgba(16,24,40,0.18)]">UA</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">切换浏览器身份</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">
-                  {simulatingPreset ? "当前标签页由浏览器预设接管" : `当前为 ${activeUserAgent.label}`}
-                </span>
-              </span>
-              <span className="text-2xl leading-none text-[#005bd1]">›</span>
-            </button>
-
-            <button
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60"
-              type="button"
-              role="switch"
-              aria-checked={options.boss.enabled}
-              disabled={isBossApplying}
-              onClick={toggleBossAntiDetection}>
-              <span className={cn("grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm", options.boss.enabled ? "bg-[#101828] text-white" : "bg-slate-100 text-slate-500")}>{options.boss.enabled ? "ON" : "OFF"}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">BOSS 反检测</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">{options.boss.enabled ? "已启用" : "默认关闭"}</span>
-              </span>
-              <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.boss.enabled ? "bg-[#101828]" : "bg-slate-300")} aria-hidden="true">
-                <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.boss.enabled ? "translate-x-5" : "translate-x-0.5")} />
-              </span>
-            </button>
-
-            <button
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60"
-              type="button"
-              role="switch"
-              aria-label="步骤录制总开关"
-              aria-checked={options.recorder.enabled}
-              disabled={isRecorderApplying}
-              onClick={toggleRecorder}>
-              <span className={cn("grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm", options.recorder.enabled ? "bg-[#b42318] text-white" : "bg-slate-100 text-slate-500")}>{options.recorder.enabled ? "ON" : "OFF"}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">步骤录制</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">{options.recorder.enabled ? "页面面板已开启" : "默认关闭"}</span>
-              </span>
-              <span className={cn("relative h-6 w-11 rounded-full transition-colors", options.recorder.enabled ? "bg-[#b42318]" : "bg-slate-300")} aria-hidden="true">
-                <span className={cn("absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform", options.recorder.enabled ? "translate-x-5" : "translate-x-0.5")} />
-              </span>
-            </button>
-
-            <button
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
-              type="button"
-              onClick={() => navigate("/video-sniffer")}>
-              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">VID</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">视频嗅探</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">捕获当前页面的视频地址并复制或下载</span>
-              </span>
-              <span className="text-2xl leading-none text-[#005bd1]">›</span>
-            </button>
-
-            <button
-              ref={qrTriggerRef}
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
-              type="button"
-              onClick={() => void openQrDialog()}>
-              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">QR</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">生成二维码</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">输入文本或当前页面地址</span>
-              </span>
-              <span className="text-2xl leading-none text-[#005bd1]">›</span>
-            </button>
-
-            {!isOptions && <NetworkMonitorToggle />}
-
-            <button
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
-              type="button"
-              aria-label="浏览器预设"
-              onClick={() => navigate("/browser-presets")}>
-              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">BP</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">浏览器预设</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">模拟设备的 UA、视口和输入方式</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500" role="status">
-                  {simulatingPreset ? `正在模拟「${simulatingPreset.name}」` : "当前没有模拟"}
-                </span>
-              </span>
-              <span className="text-2xl leading-none text-[#005bd1]">›</span>
-            </button>
-
-            {/* 退出模拟放在卡片外：按钮内不能再嵌按钮，否则浏览器会把它提到外面并打乱布局。 */}
-            {simulatingPreset && (
-              <div className="flex items-center justify-end gap-3 rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-4 py-2.5">
+        <HomeFeatureList
+          items={[
+            {
+              id: "user-agent",
+              label: "切换浏览器身份",
+              content: (
                 <button
-                  className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff] disabled:opacity-60"
+                  ref={triggerRef}
+                  className={FEATURE_BUTTON_CLASS}
                   type="button"
-                  disabled={isSimulationExiting}
-                  onClick={() => void exitSimulation()}>
-                  {isSimulationExiting ? "退出中" : "退出模拟"}
+                  disabled={isApplying || !!simulatingPreset}
+                  onClick={openUserAgentDialog}>
+                  <span className="grid size-10 place-items-center rounded-xl bg-[#101828] text-sm font-semibold text-white shadow-[0_10px_22px_rgba(16,24,40,0.18)]">
+                    UA
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">切换浏览器身份</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {simulatingPreset ? "当前标签页由浏览器预设接管" : `当前为 ${activeUserAgent.label}`}
+                    </span>
+                  </span>
+                  <span className="text-2xl leading-none text-[#005bd1]">›</span>
                 </button>
-              </div>
-            )}
+              )
+            },
+            {
+              id: "boss",
+              label: "BOSS 反检测",
+              content: (
+                <button
+                  className={FEATURE_BUTTON_CLASS}
+                  type="button"
+                  role="switch"
+                  aria-checked={options.boss.enabled}
+                  disabled={isBossApplying}
+                  onClick={toggleBossAntiDetection}>
+                  <span
+                    className={cn(
+                      "grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm",
+                      options.boss.enabled ? "bg-[#101828] text-white" : "bg-slate-100 text-slate-500"
+                    )}>
+                    {options.boss.enabled ? "ON" : "OFF"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">BOSS 反检测</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {options.boss.enabled ? "已启用" : "默认关闭"}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "relative h-6 w-11 rounded-full transition-colors",
+                      options.boss.enabled ? "bg-[#101828]" : "bg-slate-300"
+                    )}
+                    aria-hidden="true">
+                    <span
+                      className={cn(
+                        "absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform",
+                        options.boss.enabled ? "translate-x-5" : "translate-x-0.5"
+                      )}
+                    />
+                  </span>
+                </button>
+              )
+            },
+            {
+              id: "recorder",
+              label: "步骤录制",
+              content: (
+                <button
+                  className={FEATURE_BUTTON_CLASS}
+                  type="button"
+                  role="switch"
+                  aria-label="步骤录制总开关"
+                  aria-checked={options.recorder.enabled}
+                  disabled={isRecorderApplying}
+                  onClick={toggleRecorder}>
+                  <span
+                    className={cn(
+                      "grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm",
+                      options.recorder.enabled ? "bg-[#b42318] text-white" : "bg-slate-100 text-slate-500"
+                    )}>
+                    {options.recorder.enabled ? "ON" : "OFF"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">步骤录制</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {options.recorder.enabled ? "页面面板已开启" : "默认关闭"}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "relative h-6 w-11 rounded-full transition-colors",
+                      options.recorder.enabled ? "bg-[#b42318]" : "bg-slate-300"
+                    )}
+                    aria-hidden="true">
+                    <span
+                      className={cn(
+                        "absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform",
+                        options.recorder.enabled ? "translate-x-5" : "translate-x-0.5"
+                      )}
+                    />
+                  </span>
+                </button>
+              )
+            },
+            {
+              id: "video-sniffer",
+              label: "视频嗅探",
+              content: (
+                <button className={FEATURE_BUTTON_CLASS} type="button" onClick={() => navigate("/video-sniffer")}>
+                  <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">
+                    VID
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">视频嗅探</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">捕获当前页面的视频地址并复制或下载</span>
+                  </span>
+                  <span className="text-2xl leading-none text-[#005bd1]">›</span>
+                </button>
+              )
+            },
+            {
+              id: "qr",
+              label: "生成二维码",
+              content: (
+                <button
+                  ref={qrTriggerRef}
+                  className={FEATURE_BUTTON_CLASS}
+                  type="button"
+                  onClick={() => void openQrDialog()}>
+                  <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">
+                    QR
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">生成二维码</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">输入文本或当前页面地址</span>
+                  </span>
+                  <span className="text-2xl leading-none text-[#005bd1]">›</span>
+                </button>
+              )
+            },
+            {
+              id: "network-monitor",
+              label: "网络监视器",
+              hidden: isOptions,
+              content: <NetworkMonitorToggle className={FEATURE_BUTTON_CLASS} />
+            },
+            {
+              id: "browser-presets",
+              label: "浏览器预设",
+              content: (
+                <>
+                  <button
+                    className={FEATURE_BUTTON_CLASS}
+                    type="button"
+                    aria-label="浏览器预设"
+                    onClick={() => navigate("/browser-presets")}>
+                    <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">
+                      BP
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-slate-950">浏览器预设</span>
+                      <span className="mt-0.5 block truncate text-xs text-slate-500">模拟设备的 UA、视口和输入方式</span>
+                      <span className="mt-0.5 block truncate text-xs text-slate-500" role="status">
+                        {simulatingPreset ? `正在模拟「${simulatingPreset.name}」` : "当前没有模拟"}
+                      </span>
+                    </span>
+                    <span className="text-2xl leading-none text-[#005bd1]">›</span>
+                  </button>
 
-            <button
-              ref={translateTriggerRef}
-              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
-              type="button"
-              onClick={openTranslateDialog}>
-              <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">译</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-950">AI 划词翻译</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">{options.translate.enabled ? "已启用" : options.translate.apiKey ? "已配置接口，未开启" : "未配置接口"}</span>
-              </span>
-              <span className="text-2xl leading-none text-[#005bd1]">›</span>
-            </button>
-
-            {!isOptions && (
-              <button
-                ref={loginStateTriggerRef}
-                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff]"
-                type="button"
-                onClick={() => setIsLoginStateOpen(true)}>
-                <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">JSON</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-950">登录态导出</span>
-                  <span className="mt-0.5 block truncate text-xs text-slate-500">导出 cookies 和本地存储</span>
-                </span>
-                <span className="text-2xl leading-none text-[#005bd1]">›</span>
-              </button>
-            )}
-
-            {!isOptions && <CookieEditor />}
-          </div>
-        </div>
-
-        <div className={cn(isOptions ? "px-4 pb-4 pt-0" : "px-3.5 pb-3 pt-0") }>
-          <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#005bd1]">当前状态</p>
-            <p className="mt-2 text-sm leading-5 text-slate-600">已加载浏览器设置，选择一个身份后会自动同步到扩展存储。</p>
-            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-          </div>
-        </div>
-
+                  {simulatingPreset && (
+                    <div className="flex justify-end pb-2.5 pr-3">
+                      <button
+                        className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff] disabled:opacity-60"
+                        type="button"
+                        disabled={isSimulationExiting}
+                        onClick={() => void exitSimulation()}>
+                        {isSimulationExiting ? "退出中" : "退出模拟"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )
+            },
+            {
+              id: "translate",
+              label: "AI 划词翻译",
+              content: (
+                <button
+                  ref={translateTriggerRef}
+                  className={FEATURE_BUTTON_CLASS}
+                  type="button"
+                  onClick={openTranslateDialog}>
+                  <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">
+                    译
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">AI 划词翻译</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {options.translate.enabled
+                        ? "已启用"
+                        : options.translate.apiKey
+                          ? "已配置接口，未开启"
+                          : "未配置接口"}
+                    </span>
+                  </span>
+                  <span className="text-2xl leading-none text-[#005bd1]">›</span>
+                </button>
+              )
+            },
+            {
+              id: "login-state",
+              label: "登录态导出",
+              hidden: isOptions,
+              content: (
+                <button
+                  ref={loginStateTriggerRef}
+                  className={FEATURE_BUTTON_CLASS}
+                  type="button"
+                  onClick={() => setIsLoginStateOpen(true)}>
+                  <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">
+                    JSON
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">登录态导出</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">导出 cookies 和本地存储</span>
+                  </span>
+                  <span className="text-2xl leading-none text-[#005bd1]">›</span>
+                </button>
+              )
+            },
+            {
+              id: "cookie-editor",
+              label: "Cookie 编辑器",
+              hidden: isOptions,
+              content: <CookieEditor className={FEATURE_BUTTON_CLASS} />
+            }
+          ]}
+        />
+        {error && !isUserAgentOpen && !isTranslateOpen && (
+          <p role="alert" className="bg-red-50 px-3 py-2 text-xs text-red-700">
+            {error}
+          </p>
+        )}
       </section>
 
       <Dialog

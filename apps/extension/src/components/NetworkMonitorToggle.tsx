@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks"
 import type { NetmonTabState } from "@/network-monitor/types"
 
-function NetworkMonitorToggle() {
+function NetworkMonitorToggle({ className }: { className: string }) {
   const [enabled, setEnabled] = useState(false)
   const [ruleCount, setRuleCount] = useState(0)
   const [toggling, setToggling] = useState(false)
@@ -35,7 +35,7 @@ function NetworkMonitorToggle() {
 
   return (
     <button
-      className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-slate-50 active:bg-[#f4f8ff] disabled:opacity-60"
+      className={className}
       type="button"
       role="switch"
       aria-checked={enabled}
@@ -50,11 +50,11 @@ function NetworkMonitorToggle() {
         <span className="mt-0.5 block truncate text-xs text-slate-500">
           {enabled ? (ruleCount > 0 ? `已开启 · ${ruleCount} 条规则` : "已开启 · 待添加规则") : "当前标签页关闭"}
         </span>
+        {error && <span role="alert" className="block text-xs text-red-600">{error}</span>}
       </span>
       <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${enabled ? "bg-[#101828]" : "bg-slate-300"}`} aria-hidden="true">
         <span className={`absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
       </span>
-      {error && <span className="absolute inset-x-0 -bottom-1 text-xs text-red-600">{error}</span>}
     </button>
   )
 }

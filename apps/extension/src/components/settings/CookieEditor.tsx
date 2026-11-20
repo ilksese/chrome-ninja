@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks"
 import { pageUnavailableReason, type CookieResponse } from "@/cookie-editor/types"
 
-export default function CookieEditor() {
+export default function CookieEditor({ className }: { className: string }) {
   const [tabId, setTabId] = useState<number>()
   const [reason, setReason] = useState("正在检查当前网页…")
   const [error, setError] = useState("")
@@ -43,13 +43,13 @@ export default function CookieEditor() {
   return (
     <div>
       <button
-        className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className={className}
         type="button"
         disabled={!!reason || tabId === undefined || opening}
         title={reason || "在当前网页打开 Cookie 编辑器"}
         onClick={() => void open()}>
         <span
-          className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#e8f2ff] text-lg text-[#005bd1]"
+          className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f2ff] text-lg text-[#005bd1]"
           aria-hidden="true">
           ◉
         </span>

@@ -1,6 +1,6 @@
 import NavigationBar from "@components/NavigationBar"
 import { cn } from "@chrome-ninja/utils"
-import { Navigate, Route, Routes, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useLocation, useMatch } from "react-router-dom"
 import BrowserPresets from "./pages/BrowserPresets"
 import Home from "./pages/Home"
 import Settings from "./pages/Settings"
@@ -13,6 +13,7 @@ type AppProps = {
 function App({ layout }: AppProps) {
   const location = useLocation()
   const isOptions = layout === "options"
+  const isHome = useMatch("/home") !== null
 
   return (
     <div className={cn("relative min-h-0 flex-1 overflow-hidden", isOptions ? "grid grid-cols-[176px_minmax(0,1fr)] max-[760px]:flex max-[760px]:flex-col" : "flex flex-col")}>
@@ -22,8 +23,8 @@ function App({ layout }: AppProps) {
           <NavigationBar layout={layout} />
         </aside>
       )}
-      <div className={cn("relative min-h-0 flex-1 overflow-y-auto", isOptions ? "px-8 py-7 max-[760px]:px-4 max-[760px]:py-4" : "p-4")}>
-        <main className={cn(isOptions && "mx-auto w-full max-w-5xl")}>
+      <div className={cn("relative min-h-0 flex-1 overflow-y-auto", !isHome && (isOptions ? "px-8 py-7 max-[760px]:px-4 max-[760px]:py-4" : "p-4"))}>
+        <main className={cn(isOptions && !isHome && "mx-auto w-full max-w-5xl")}>
           <div key={location.pathname} className="ninja-page-enter">
             <Routes>
               <Route path="/" element={<Navigate replace to={isOptions ? "/settings" : "/home"} />} />
