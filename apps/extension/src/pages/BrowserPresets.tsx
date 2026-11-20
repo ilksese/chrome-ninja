@@ -8,6 +8,7 @@ import type {
 import type { Resolver } from "react-hook-form"
 import { useCallback, useEffect, useRef, useState } from "preact/hooks"
 import { Controller, useForm } from "react-hook-form"
+import Sortable from "sortablejs"
 import { cn } from "@chrome-ninja/utils"
 import Dialog from "@components/Dialog"
 import { getDevicePreset } from "@/browser-preset/devices"
@@ -88,6 +89,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   // 标签页在用户自建分组里：移出是有损操作，应用前必须由用户确认。
   const [pendingGroupMove, setPendingGroupMove] = useState<BrowserPreset | null>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  const reorderPending = useRef(false)
   const presetsRef = useRef(presets)
   presetsRef.current = presets
   const resolver = useCallback<Resolver<FormState>>(async (values) => {
@@ -120,10 +123,10 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   )
 
   /** 列表与使用数量总是成对下发，页面也必须成对更新；统一走这里避免两处漏写。 */
-  const applyList = (response: BrowserPresetResponse) => {
+  const applyList = useCallback((response: BrowserPresetResponse) => {
     setPresets(response.presets ?? [])
     setUsage(response.usage ?? {})
-  }
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -135,11 +138,60 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     } finally {
       setLoading(false)
     }
-  }, [send])
+  }, [applyList, send])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  const saveOrder = useCallback(
+    async (ids: string[]) => {
+      if (reorderPending.current) return
+      reorderPending.current = true
+      setError("")
+      try {
+        const response = await send({ type: "reorder", ids })
+        if (!response?.ok) throw new Error(response?.error ?? "无法保存预设顺序")
+        applyList(response)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "无法保存预设顺序")
+        await refresh()
+      } finally {
+        reorderPending.current = false
+      }
+    },
+    [applyList, refresh, send]
+  )
+
+  useEffect(() => {
+    const list = listRef.current
+    if (formOpen || loading || !list) return
+    const sortable = Sortable.create(list, {
+      handle: "[data-preset-handle]",
+      animation: 120,
+      direction: "vertical",
+      ghostClass: "opacity-40",
+      onMove: () => !reorderPending.current,
+      onEnd: ({ oldIndex, newIndex }) => {
+        if (oldIndex === newIndex) return
+        const ids = sortable.toArray()
+        sortable.sort(presetsRef.current.map((preset) => preset.id))
+        void saveOrder(ids)
+      }
+    })
+    return () => sortable.destroy()
+  }, [formOpen, loading, saveOrder])
+
+  const movePreset = (event: KeyboardEvent, index: number) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
+    event.preventDefault()
+    const nextIndex = index + (event.key === "ArrowUp" ? -1 : 1)
+    if (nextIndex < 0 || nextIndex >= presets.length) return
+    const ids = presets.map((preset) => preset.id)
+    const [id] = ids.splice(index, 1)
+    ids.splice(nextIndex, 0, id)
+    void saveOrder(ids)
+  }
 
   // 应用前先问后台目标标签页能不能模拟，受限页面据此在点击前就禁用；应答同时带回模拟状态与一次性提示。
   const refreshStatus = useCallback(async () => {
@@ -529,8 +581,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
           {loading ? (
             <p className="text-sm text-slate-500">正在读取预设…</p>
           ) : (
-            <ul className="space-y-2">
-              {presets.map((preset) => {
+            <ul ref={listRef} className="space-y-2">
+              {presets.map((preset, index) => {
                 const builtin = preset.id === preset.deviceId
                 const device = getDevicePreset(preset.deviceId)
                 // 使用中即锁定：数量来自后台，页面不自行判断。
@@ -539,7 +591,21 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                 return (
                   <li
                     key={preset.id}
-                    className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+                    data-id={preset.id}
+                    className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-1 pr-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3">
+                    <button
+                      type="button"
+                      data-preset-handle
+                      className="row-span-2 grid h-full min-h-9 w-7 cursor-grab touch-none select-none place-items-center self-stretch rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 active:cursor-grabbing sm:row-span-1"
+                      aria-label={`排序 ${preset.name}`}
+                      aria-keyshortcuts="ArrowUp ArrowDown"
+                      title="拖动排序，或按上、下方向键"
+                      onKeyDown={(event) => movePreset(event, index)}>
+                      <span
+                        aria-hidden="true"
+                        className="h-4 w-3 bg-[radial-gradient(circle,currentColor_1px,transparent_1.5px)] bg-[length:6px_5px]"
+                      />
+                    </button>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-slate-950">{preset.name}</span>
                       <span className="mt-0.5 block text-xs text-slate-500">
@@ -553,7 +619,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                         </span>
                       )}
                     </span>
-                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         className="shrink-0 rounded-lg bg-[#0c5fb8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#094c93] disabled:cursor-not-allowed disabled:opacity-50"
                         type="button"

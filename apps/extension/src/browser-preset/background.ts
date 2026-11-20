@@ -207,10 +207,14 @@ async function stopPreset(presetId: string) {
   for (const tabId of tabIds) await endSession(tabId)
 }
 
-async function loadPresets(): Promise<BrowserPreset[]> {
-  const stored = await chrome.storage.local.get([BROWSER_PRESETS_KEY])
+const PRESET_ORDER_KEY = "browserPresetOrder"
+
+async function loadPresetList() {
+  const stored = await chrome.storage.local.get([BROWSER_PRESETS_KEY, PRESET_ORDER_KEY])
   const value = stored[BROWSER_PRESETS_KEY]
-  return Array.isArray(value) ? (value as BrowserPreset[]) : []
+  const customPresets = Array.isArray(value) ? (value as BrowserPreset[]) : []
+  const order = stored[PRESET_ORDER_KEY]
+  return { customPresets, order: Array.isArray(order) ? (order as string[]) : [] }
 }
 
 async function savePresets(presets: BrowserPreset[]) {
@@ -240,9 +244,14 @@ function usageOf(presets: BrowserPreset[]): BrowserPresetUsage {
   return Object.fromEntries(presets.map((preset) => [preset.id, usageCountOf(preset.id)]))
 }
 
-function listResponse(customPresets: BrowserPreset[]): BrowserPresetResponse {
-  const presets = [...BUILTIN_PRESETS, ...customPresets]
+function listResponse(presets: BrowserPreset[]): BrowserPresetResponse {
   return { ok: true, presets, usage: usageOf(presets) }
+}
+
+function orderedPresets(customPresets: BrowserPreset[], order: string[]) {
+  const positions = new Map(order.map((id, index) => [id, index]))
+  const position = (preset: BrowserPreset) => positions.get(preset.id) ?? order.length
+  return [...BUILTIN_PRESETS, ...customPresets].sort((first, second) => position(first) - position(second))
 }
 
 export function registerBrowserPresetBackground() {
@@ -275,9 +284,18 @@ export function registerBrowserPresetBackground() {
       const message = incoming
       const handle = async (): Promise<BrowserPresetResponse> => {
         if (sender.id !== chrome.runtime.id) throw new Error("不受信任的扩展消息")
-        const customPresets = await loadPresets()
-        const presets = [...BUILTIN_PRESETS, ...customPresets]
-        if (message.type === "list") return listResponse(customPresets)
+        const { customPresets, order } = await loadPresetList()
+        const presets = orderedPresets(customPresets, order)
+        if (message.type === "list") return listResponse(presets)
+        if (message.type === "reorder") {
+          const { ids } = message
+          if (!Array.isArray(ids) || ids.length !== presets.length) throw new Error("预设列表已变化，请重新排序")
+          const sortedIds = new Set(ids)
+          if (sortedIds.size !== ids.length || presets.some((preset) => !sortedIds.has(preset.id)))
+            throw new Error("预设列表已变化，请重新排序")
+          await chrome.storage.local.set({ [PRESET_ORDER_KEY]: ids })
+          return listResponse(orderedPresets(customPresets, ids))
+        }
         if (message.type === "create" || message.type === "update") {
           const existing =
             message.type === "update" ? customPresets.find((preset) => preset.id === message.id) : undefined
@@ -293,19 +311,19 @@ export function registerBrowserPresetBackground() {
             ? customPresets.map((item) => (item.id === preset.id ? preset : item))
             : [...customPresets, preset]
           await savePresets(next)
-          return { ...listResponse(next), preset }
+          return { ...listResponse(orderedPresets(next, order)), preset }
         }
         if (message.type === "delete") {
           if (!customPresets.some((preset) => preset.id === message.id)) throw new Error("只能删除自定义预设")
           assertPresetUnused(message.id)
           const next = customPresets.filter((preset) => preset.id !== message.id)
           await savePresets(next)
-          return listResponse(next)
+          return listResponse(orderedPresets(next, order))
         }
         if (message.type === "stop") {
           if (!presets.some((preset) => preset.id === message.id)) throw new Error("预设不存在，可能已被删除")
           await stopPreset(message.id)
-          return listResponse(customPresets)
+          return listResponse(presets)
         }
         if (message.type === "status") {
           const tabId = await targetTabId(sender)

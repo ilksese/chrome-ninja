@@ -113,6 +113,9 @@ importers:
       react-router-dom:
         specifier: 6.28.0
         version: 6.28.0
+      sortablejs:
+        specifier: 1.15.7
+        version: 1.15.7
       tailwind-merge:
         specifier: 3.6.0
         version: 3.6.0
@@ -138,6 +141,9 @@ importers:
       '@types/node':
         specifier: 20.16.0
         version: 20.16.0
+      '@types/sortablejs':
+        specifier: 1.15.9
+        version: 1.15.9
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
@@ -1197,6 +1203,9 @@ packages:
 
   '@types/node@20.16.0':
     resolution: {integrity: sha512-vDxceJcoZhIVh67S568bm1UGZO0DX0hpplJZxzeXMKwIPLn190ec5RRxQ69BKhX44SUGIxxgMdDY557lGLKprQ==}
+
+  '@types/sortablejs@1.15.9':
+    resolution: {integrity: sha512-7HP+rZGE2p886PKV9c9OJzLBI6BBJu1O7lJGYnPyG3fS4/duUCcngkNCjsLwIMV+WMqANe3tt4irrXHSIe68OQ==}
 
   '@typescript-eslint/eslint-plugin@8.15.0':
     resolution: {integrity: sha512-+zkm9AR1Ds9uLWN3fkoeXgFppaQ+uEVtfOV62dDmsy9QCNqlRHWNEck4yarvRNrvRcHQLGfqBNui3cimoz8XAg==}
@@ -2583,6 +2592,9 @@ packages:
   snake-case@3.0.4:
     resolution: {integrity: sha512-LAOh4z89bGQvl9pFfNF8V146i7o7/CqFPbqzYgP+yYzDIDeS9HaNFtXABamRW+AQzEVODcvE79ljJ+8a9YSdMg==}
 
+  sortablejs@1.15.7:
+    resolution: {integrity: sha512-Kk8wLQPlS+yi1ZEf48a4+fzHa4yxjC30M/Sr2AnQu+f/MPwvvX9XjZ6OWejiz8crBsLwSq8GHqaxaET7u6ux0A==}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -3807,6 +3819,8 @@ snapshots:
   '@types/node@20.16.0':
     dependencies:
       undici-types: 6.19.8
+
+  '@types/sortablejs@1.15.9': {}
 
   '@typescript-eslint/eslint-plugin@8.15.0(@typescript-eslint/parser@8.15.0(eslint@9.15.0(jiti@2.7.0))(typescript@5.6.3))(eslint@9.15.0(jiti@2.7.0))(typescript@5.6.3)':
     dependencies:
@@ -5176,6 +5190,8 @@ snapshots:
     dependencies:
       dot-case: 3.0.4
       tslib: 2.8.1
+
+  sortablejs@1.15.7: {}
 
   source-map-js@1.2.1: {}
 

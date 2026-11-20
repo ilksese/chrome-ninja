@@ -38,6 +38,7 @@ export type UserAgentIdentity = {
 
 export type BrowserPresetCommand =
   | { type: "list" }
+  | { type: "reorder"; ids: string[] }
   | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string }
   | { type: "delete"; id: string }
   | { type: "apply"; id: string; confirmGroupMove?: boolean }
