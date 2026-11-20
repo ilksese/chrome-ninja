@@ -41,7 +41,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 
 后台在 `src/cookie-editor/background.ts` 处理 `cookie-editor` 命令（`open`、`list`、`save`、`disable`、`enable`），按发送标签页确定权限范围，命令返回明确成功或错误。禁用规则与待处理移除标记保存在 `chrome.storage.local.cookieEditorRules`；持久化成功后才执行禁用移除。过期写入前同时记录本地归属标记与 `chrome.storage.session.cookieEditorPendingRemovals` 会话登记，后台重建只信任两者同时存在的归属，浏览器重启后不沿用上一会话的归属登记。过期写入明确失败或校验发现目标未移除时，撤销内存归属，并分别尝试清理本地与会话记录，已排队事件也不再信任该失败操作；单侧残留不能恢复归属。任一清理失败都会明确报错，禁用规则与最新恢复数据仍保留，存储恢复后可重新载入核实并重试。打开面板的标签页订阅保存在 `chrome.storage.session.cookieEditorSubscribers`，后台休眠唤醒后继续通知。打开入口等待面板挂载确认，面板订阅状态变化并在关闭时释放资源。
 
-相关消息、事件顺序、后台重建、身份隔离与失败行为由 Vitest 验证，面板与入口也有行为测试。真实 Chrome 验收另需已加载扩展和仓库允许的浏览器工具授权，覆盖后台休眠唤醒、浏览器重启、分区 API 与 HttpOnly 往返、注入、原生调整大小及录制流程。
+在真实 Chrome 中加载扩展后，可验收后台休眠唤醒、浏览器重启、分区 API 与 HttpOnly 往返、注入、原生调整大小及录制流程。使用浏览器工具须先获得授权。
 
 ## 浏览器预设
 
@@ -74,7 +74,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 
 被至少一个标签页使用的预设不能编辑、重命名或删除，列表显示「正在 N 个标签页使用」并提供「停止」。停止逐个退出所有使用该预设的标签页，最后一个使用者退出后预设自动解锁。前端只读后台下发的使用数量，不自行推断锁定态。
 
-后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令（`list`、`create`、`update`、`delete`、`apply`、`simulate-exit`、`stop`、`status`），校验规则在 `src/browser-preset/validation.ts`，页面与后台共用同一份；UA 身份包在 `src/browser-preset/identity.ts`，设备档位在 `src/browser-preset/devices.ts`。协议、身份包、页面与首页入口分别由 `tests/browser-preset-background.test.ts`、`tests/browser-preset-identity.test.ts`、`tests/browser-presets-page.test.tsx` 与 `tests/home-browser-preset-entry.test.tsx` 验证。
+后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令（`list`、`create`、`update`、`delete`、`apply`、`simulate-exit`、`stop`、`status`），校验规则在 `src/browser-preset/validation.ts`，页面与后台共用同一份；UA 身份包在 `src/browser-preset/identity.ts`，设备档位在 `src/browser-preset/devices.ts`。
 
 ## 命令
 
@@ -85,7 +85,6 @@ pnpm --filter @chrome-ninja/extension typecheck
 pnpm --filter @chrome-ninja/extension build
 ```
 
-扩展测试在根目录运行 `pnpm test --project extension --project extension-ui`。
 
 根级 `pnpm dev` 和 `pnpm build` 等价于 extension 的 dev/build。
 

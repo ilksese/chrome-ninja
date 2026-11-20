@@ -4,7 +4,7 @@
 
 ## 命令
 
-从仓库根目录执行：
+测试用例只在本地编写和运行，不纳入 Git。按下表放置用例后，从仓库根目录执行：
 
 ```sh
 pnpm test
@@ -29,13 +29,9 @@ pnpm test --project packages
 
 根目录 `vitest.config.ts` 独立于应用构建配置，不加载 CRX、manifest 扫描、Tailwind 或开发桥。各应用测试保留自己的源码别名；UI 测试使用 Preact compat，不安装 React/React DOM。
 
-`apps/extension/tests/dev-build-watch.test.ts` 在独立 Node 进程中运行真实开发构建，使用临时输出目录，验证初次构建和连续两次重建均成功，且 Manifest 的 Content Script 引用对应实际文件。测试仅临时调整源文件时间戳并在结束时恢复，不改变源码内容。
-
 DOM 测试通过 `tests/setup-dom.ts` 注册 jest-dom 断言并在每个用例后清理 DOM。使用 Testing Library 按角色、名称查询元素，测试可观察的交互行为，不依赖组件内部状态或大面积快照。
 
 Chrome API 在用例中通过 `vi.stubGlobal` 按需模拟；不要创建覆盖全部 API 的通用模拟层。模拟会在用例之间自动恢复，订阅和其他外部资源仍需由用例主动清理。
-
-现有 `apps/extension/scripts/check-element-copy.mjs` 保持独立，不由 `pnpm test` 自动执行；其中的回归断言迁移完成前仍应保留。
 
 ## 测试边界
 

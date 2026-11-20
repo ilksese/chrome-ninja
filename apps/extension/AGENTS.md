@@ -42,7 +42,6 @@
 - `src/cookie-editor/background.ts` owns the `cookie-editor` message commands, Cookie observation, and persisted disable rules. Read the Cookie editor section in `README.md` for removal attribution and recovery boundaries.
 - The Popup and webpage context menu share the background's editor-open flow. `src/cookie-editor/content.ts` is injected into the top frame with a CRXJS `?script` loader and acknowledges mounting; `panel.ts` owns webpage drafts and subscriptions.
 - Scope comes from the sender tab (top frame), its Cookie store, and `chrome.cookies.getPartitionKey`. Identity includes name, Domain, Path, store, and both partition key fields. Expired writes remove an exact identity; URL/name removal is insufficient.
-- Tests exercise messages/events in `tests/cookie-editor-background.test.ts`, webpage behavior in `tests/cookie-editor-panel.test.ts`, and the Popup entry in `tests/cookie-editor-entry.test.tsx`.
 
 ## Browser presets
 
@@ -70,11 +69,8 @@
 - `mobileConflictOf` compares the identity's `metadata.mobile` with the preset's `viewport.mobile`. A disagreeing pair makes `create`/`update` return `needsConfirmation` plus the `MobileConflict` detail (`sec-ch-ua-mobile` value, layout treatment) and writes nothing; the page shows a confirmation dialog whose 确认风险 resends the same draft with `confirmConflict: true`, and whose 取消 keeps the form untouched. Stored values are never corrected silently.
 - `src/browser-preset/devices.ts` holds the device tiers. They only fill the viewport fields and are never stored.
 - `/browser-presets` renders `src/pages/BrowserPresets.tsx` from the Home card in both Popup and Options. First-time copy explains that applying a preset needs the debugger permission. The device scale factor input uses `step="any"` because tiers such as the Pixel 8 send 2.625, which a fixed step would reject before the form submits.
-- Do not commit test files. They run locally from disk and stay untracked.
 
 ## Checks
-
-- Run relevant Vitest projects with root `pnpm test --project extension --project extension-ui`.
 
 - Run `pnpm --filter @chrome-ninja/extension lint` and `pnpm --filter @chrome-ninja/extension typecheck` for source edits.
 - Run `pnpm --filter @chrome-ninja/extension build` when touching manifest, background, content-script, assets, or Vite config.
