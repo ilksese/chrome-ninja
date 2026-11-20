@@ -56,7 +56,13 @@ export const optionsAtom = atom(
   }
 )
 optionsCache.onMount = (setAtom) => {
+  const syncOptions = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+    if (areaName === "local" && changes.options) setAtom(mergeOptions(changes.options.newValue))
+  }
+  const storageChanges = chrome.storage?.onChanged
+  storageChanges?.addListener(syncOptions)
   chrome.storage?.local.get(["options"], ({ options }) => {
     setAtom(mergeOptions(options))
   })
+  return () => storageChanges?.removeListener(syncOptions)
 }
