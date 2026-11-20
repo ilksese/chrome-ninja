@@ -5,16 +5,15 @@ import type {
   BrowserPresetUsage,
   MobileConflict
 } from "@/browser-preset/types"
-import type { PresetField, PresetFieldErrors } from "@/browser-preset/validation"
 import type { UserAgentType } from "@/types"
 import { useCallback, useEffect, useRef, useState } from "preact/hooks"
+import { Controller, type Resolver, useForm } from "react-hook-form"
 import { cn } from "@chrome-ninja/utils"
 import Dialog from "@components/Dialog"
 import { DEVICE_PRESETS } from "@/browser-preset/devices"
 import {
   DEVICE_SCALE_MAX,
   DEVICE_SCALE_MIN,
-  firstPresetError,
   PRESET_NAME_MAX_LENGTH,
   validatePreset,
   VIEWPORT_MAX,
@@ -78,9 +77,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [presets, setPresets] = useState<BrowserPreset[]>([])
   const [usage, setUsage] = useState<BrowserPresetUsage>({})
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState<FormState | null>(null)
-  const [submitted, setSubmitted] = useState(false)
-  const [touched, setTouched] = useState<PresetField[]>([])
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string>()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -92,8 +90,32 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   // 标签页在用户自建分组里：移出是有损操作，应用前必须由用户确认。
   const [pendingGroupMove, setPendingGroupMove] = useState<BrowserPreset | null>(null)
   const [conflict, setConflict] = useState<MobileConflict | null>(null)
-  const nameRef = useRef<HTMLInputElement>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
+  const presetsRef = useRef(presets)
+  presetsRef.current = presets
+  const resolver = useCallback<Resolver<FormState>>(async (values) => {
+    const { errors } = validatePreset(toDraft(values), presetsRef.current, values.id)
+    return {
+      values: Object.keys(errors).length === 0 ? values : {},
+      errors: Object.fromEntries(
+        Object.entries(errors).map(([field, message]) => [field, { type: "validate", message }])
+      )
+    }
+  }, [])
+  const {
+    control,
+    getValues,
+    handleSubmit,
+    reset,
+    setFocus,
+    setValue,
+    trigger,
+    formState: { isSubmitted, isValid }
+  } = useForm<FormState>({
+    defaultValues: EMPTY_FORM,
+    resolver,
+    mode: "onChange"
+  })
 
   const send = useCallback(
     async (command: Record<string, unknown>) =>
@@ -141,56 +163,49 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   }, [refreshStatus])
 
   useEffect(() => {
-    if (form) requestAnimationFrame(() => nameRef.current?.focus())
-  }, [form])
+    if (formOpen) requestAnimationFrame(() => setFocus("name"))
+  }, [formOpen, setFocus])
 
-  const updateForm = (patch: Partial<FormState>, field?: PresetField) => {
-    if (field && !touched.includes(field)) setTouched((current) => [...current, field])
-    setForm((current) => (current ? { ...current, ...patch } : current))
-  }
+  useEffect(() => {
+    if (formOpen) void trigger()
+  }, [editingId, formOpen, trigger])
 
   const openCreate = () => {
     setError("")
-    setSubmitted(false)
-    setTouched([])
     setConflict(null)
-    setForm({ ...EMPTY_FORM })
+    setEditingId(undefined)
+    reset({ ...EMPTY_FORM })
+    setFormOpen(true)
   }
 
   const openEdit = (preset: BrowserPreset) => {
     setError("")
-    setSubmitted(false)
-    setTouched([])
     setConflict(null)
-    setForm(toForm(preset))
+    setEditingId(preset.id)
+    reset(toForm(preset))
+    setFormOpen(true)
   }
 
   const closeForm = () => {
-    setForm(null)
-    setSubmitted(false)
-    setTouched([])
+    setFormOpen(false)
+    setEditingId(undefined)
     setConflict(null)
   }
 
-  const { errors } = form ? validatePreset(toDraft(form), presets, form.id) : { errors: {} }
-  // 未触碰的字段不提前报错。
-  const visibleErrors = Object.fromEntries(
-    Object.entries(errors).filter(([field]) => submitted || touched.includes(field as PresetField))
-  ) as PresetFieldErrors
-  const canSave = !!form && !firstPresetError(errors) && !saving
+  const canSave = formOpen && isValid && !saving
 
   const save = async (confirmConflict = false) => {
-    if (!form) return
-    setSubmitted(true)
-    if (firstPresetError(errors)) return
+    if (!formOpen) return
+    if (!(await trigger())) return
+    const values = getValues()
     setSaving(true)
     setError("")
     try {
       const response = await send({
-        type: form.id ? "update" : "create",
-        ...(form.id ? { id: form.id } : {}),
+        type: editingId ? "update" : "create",
+        ...(editingId ? { id: editingId } : {}),
         ...(confirmConflict ? { confirmConflict: true } : {}),
-        preset: toDraft(form)
+        preset: toDraft(values)
       })
       // 冲突时后台未写入任何内容，确认后带着标记重发同一份草稿。
       if (response?.needsConfirmation) {
@@ -294,6 +309,14 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
 
   const simulatingPreset = simulatingId ? presets.find((preset) => preset.id === simulatingId) : undefined
 
+  const selectDevicePreset = (preset: (typeof DEVICE_PRESETS)[number]) => {
+    const options = { shouldDirty: true, shouldTouch: true, shouldValidate: true }
+    setValue("width", String(preset.viewport.width), options)
+    setValue("height", String(preset.viewport.height), options)
+    setValue("deviceScaleFactor", String(preset.viewport.deviceScaleFactor), options)
+    setValue("mobile", preset.viewport.mobile, options)
+  }
+
   const cancelDelete = () => {
     setPendingDelete(null)
     requestAnimationFrame(() => deleteTriggerRef.current?.focus())
@@ -309,7 +332,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
             </span>
             <h1 className="mt-1 text-base font-semibold leading-5 text-slate-950">浏览器预设</h1>
           </span>
-          {!form && (
+          {!formOpen && (
             <button
               className="shrink-0 rounded-xl bg-[#101828] px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054]"
               type="button"
@@ -356,58 +379,73 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
           </p>
         )}
 
-        {tabReason && !form && (
+        {tabReason && !formOpen && (
           <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
             当前标签页无法模拟：{tabReason}
           </p>
         )}
       </section>
 
-      {form ? (
+      {formOpen ? (
         <section className="rounded-[14px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(16,24,40,0.12)]">
           <form
             aria-label="预设表单"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void save()
-            }}>
-            <h2 className="text-sm font-semibold text-slate-950">{form.id ? "编辑预设" : "新建预设"}</h2>
+            onSubmit={handleSubmit(() => void save())}>
+            <h2 className="text-sm font-semibold text-slate-950">{editingId ? "编辑预设" : "新建预设"}</h2>
 
             <div className="mt-3 space-y-3">
               <label className="block">
                 <span className="text-xs font-medium text-slate-600">预设名称</span>
-                <input
-                  ref={nameRef}
-                  className={cn(fieldClass, visibleErrors.name && "border-red-400 focus:border-red-500")}
-                  type="text"
-                  value={form.name}
-                  maxLength={PRESET_NAME_MAX_LENGTH * 2}
-                  placeholder="例如 iPhone 15 调试"
-                  aria-invalid={!!visibleErrors.name}
-                  aria-describedby={visibleErrors.name ? "preset-name-error" : undefined}
-                  onInput={(event) => updateForm({ name: (event.target as HTMLInputElement).value }, "name")}
+                <Controller
+                  name="name"
+                  control={control}
+                  render={({ field, fieldState }) => {
+                    const message = (isSubmitted || fieldState.isTouched) && fieldState.error?.message
+                    return (
+                      <>
+                        <input
+                          ref={field.ref}
+                          className={cn(fieldClass, message && "border-red-400 focus:border-red-500")}
+                          type="text"
+                          value={field.value}
+                          maxLength={PRESET_NAME_MAX_LENGTH * 2}
+                          placeholder="例如 iPhone 15 调试"
+                          aria-invalid={!!message}
+                          aria-describedby={message ? "preset-name-error" : undefined}
+                          onInput={(event) => field.onChange((event.target as HTMLInputElement).value)}
+                          onBlur={field.onBlur}
+                        />
+                        {message && (
+                          <span id="preset-name-error" className="mt-1 block text-xs text-red-600">
+                            {message}
+                          </span>
+                        )}
+                      </>
+                    )
+                  }}
                 />
-                {visibleErrors.name && (
-                  <span id="preset-name-error" className="mt-1 block text-xs text-red-600">
-                    {visibleErrors.name}
-                  </span>
-                )}
               </label>
 
               <label className="block">
                 <span className="text-xs font-medium text-slate-600">User-Agent</span>
-                <select
-                  className={fieldClass}
-                  value={form.userAgent}
-                  onChange={(event) =>
-                    updateForm({ userAgent: (event.target as HTMLSelectElement).value as UserAgentType }, "userAgent")
-                  }>
-                  {USER_AGENT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.value === "default" ? "不覆盖（保留真实身份）" : option.label}
-                    </option>
-                  ))}
-                </select>
+                <Controller
+                  name="userAgent"
+                  control={control}
+                  render={({ field }) => (
+                    <select
+                      ref={field.ref}
+                      className={fieldClass}
+                      value={field.value}
+                      onChange={(event) => field.onChange((event.target as HTMLSelectElement).value as UserAgentType)}
+                      onBlur={field.onBlur}>
+                      {USER_AGENT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.value === "default" ? "不覆盖（保留真实身份）" : option.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                />
               </label>
 
               <div>
@@ -418,14 +456,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                       key={preset.label}
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-[#9bc8ff] hover:bg-[#e8f2ff] hover:text-[#005bd1]"
                       type="button"
-                      onClick={() =>
-                        updateForm({
-                          width: String(preset.viewport.width),
-                          height: String(preset.viewport.height),
-                          deviceScaleFactor: String(preset.viewport.deviceScaleFactor),
-                          mobile: preset.viewport.mobile
-                        })
-                      }>
+                      onClick={() => selectDevicePreset(preset)}>
                       {preset.label}
                     </button>
                   ))}
@@ -435,61 +466,100 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
               <div className="grid grid-cols-3 gap-3">
                 <label className="block">
                   <span className="text-xs font-medium text-slate-600">视口宽度</span>
-                  <input
-                    className={cn(fieldClass, visibleErrors.width && "border-red-400 focus:border-red-500")}
-                    type="number"
-                    inputMode="numeric"
-                    min={VIEWPORT_MIN}
-                    max={VIEWPORT_MAX}
-                    value={form.width}
-                    onInput={(event) => updateForm({ width: (event.target as HTMLInputElement).value }, "width")}
+                  <Controller
+                    name="width"
+                    control={control}
+                    render={({ field, fieldState }) => {
+                      const message = (isSubmitted || fieldState.isTouched) && fieldState.error?.message
+                      return (
+                        <>
+                          <input
+                            ref={field.ref}
+                            className={cn(fieldClass, message && "border-red-400 focus:border-red-500")}
+                            type="number"
+                            inputMode="numeric"
+                            min={VIEWPORT_MIN}
+                            max={VIEWPORT_MAX}
+                            value={field.value}
+                            onInput={(event) => field.onChange((event.target as HTMLInputElement).value)}
+                            onBlur={field.onBlur}
+                          />
+                          {message && <span className="mt-1 block text-xs text-red-600">{message}</span>}
+                        </>
+                      )
+                    }}
                   />
-                  {visibleErrors.width && (
-                    <span className="mt-1 block text-xs text-red-600">{visibleErrors.width}</span>
-                  )}
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-slate-600">视口高度</span>
-                  <input
-                    className={cn(fieldClass, visibleErrors.height && "border-red-400 focus:border-red-500")}
-                    type="number"
-                    inputMode="numeric"
-                    min={VIEWPORT_MIN}
-                    max={VIEWPORT_MAX}
-                    value={form.height}
-                    onInput={(event) => updateForm({ height: (event.target as HTMLInputElement).value }, "height")}
+                  <Controller
+                    name="height"
+                    control={control}
+                    render={({ field, fieldState }) => {
+                      const message = (isSubmitted || fieldState.isTouched) && fieldState.error?.message
+                      return (
+                        <>
+                          <input
+                            ref={field.ref}
+                            className={cn(fieldClass, message && "border-red-400 focus:border-red-500")}
+                            type="number"
+                            inputMode="numeric"
+                            min={VIEWPORT_MIN}
+                            max={VIEWPORT_MAX}
+                            value={field.value}
+                            onInput={(event) => field.onChange((event.target as HTMLInputElement).value)}
+                            onBlur={field.onBlur}
+                          />
+                          {message && <span className="mt-1 block text-xs text-red-600">{message}</span>}
+                        </>
+                      )
+                    }}
                   />
-                  {visibleErrors.height && (
-                    <span className="mt-1 block text-xs text-red-600">{visibleErrors.height}</span>
-                  )}
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-slate-600">设备像素比</span>
-                  <input
-                    className={cn(fieldClass, visibleErrors.deviceScaleFactor && "border-red-400 focus:border-red-500")}
-                    type="number"
-                    inputMode="decimal"
-                    // 档位里的 2.625 这类像素比不是 0.5 的整数倍；固定 step 会让表单校验失败并拦下隐式提交。
-                    step="any"
-                    min={DEVICE_SCALE_MIN}
-                    max={DEVICE_SCALE_MAX}
-                    value={form.deviceScaleFactor}
-                    onInput={(event) =>
-                      updateForm({ deviceScaleFactor: (event.target as HTMLInputElement).value }, "deviceScaleFactor")
-                    }
+                  <Controller
+                    name="deviceScaleFactor"
+                    control={control}
+                    render={({ field, fieldState }) => {
+                      const message = (isSubmitted || fieldState.isTouched) && fieldState.error?.message
+                      return (
+                        <>
+                          <input
+                            ref={field.ref}
+                            className={cn(fieldClass, message && "border-red-400 focus:border-red-500")}
+                            type="number"
+                            inputMode="decimal"
+                            // 档位里的 2.625 这类像素比不是 0.5 的整数倍；固定 step 会让表单校验失败并拦下隐式提交。
+                            step="any"
+                            min={DEVICE_SCALE_MIN}
+                            max={DEVICE_SCALE_MAX}
+                            value={field.value}
+                            onInput={(event) => field.onChange((event.target as HTMLInputElement).value)}
+                            onBlur={field.onBlur}
+                          />
+                          {message && <span className="mt-1 block text-xs text-red-600">{message}</span>}
+                        </>
+                      )
+                    }}
                   />
-                  {visibleErrors.deviceScaleFactor && (
-                    <span className="mt-1 block text-xs text-red-600">{visibleErrors.deviceScaleFactor}</span>
-                  )}
                 </label>
               </div>
 
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900">
-                <input
-                  className="size-4 accent-[#0c5fb8]"
-                  type="checkbox"
-                  checked={form.mobile}
-                  onChange={(event) => updateForm({ mobile: (event.target as HTMLInputElement).checked })}
+                <Controller
+                  name="mobile"
+                  control={control}
+                  render={({ field }) => (
+                    <input
+                      ref={field.ref}
+                      className="size-4 accent-[#0c5fb8]"
+                      type="checkbox"
+                      checked={field.value}
+                      onChange={(event) => field.onChange((event.target as HTMLInputElement).checked)}
+                      onBlur={field.onBlur}
+                    />
+                  )}
                 />
                 移动端布局
               </label>
