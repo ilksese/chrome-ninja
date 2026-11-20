@@ -51,7 +51,7 @@ export default defineConfig({
         test: {
           name: "extension-ui",
           environment: "jsdom",
-          server: { deps: { inline: ["jotai"] } },
+          server: { deps: { inline: ["jotai", "react-hook-form"] } },
           include: ["apps/extension/tests/**/*.test.tsx"],
           setupFiles: ["./tests/setup-dom.ts"],
           restoreMocks: true,

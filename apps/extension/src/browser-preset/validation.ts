@@ -1,5 +1,5 @@
 import type { BrowserPreset, BrowserPresetDraft } from "./types"
-import { USER_AGENT_OPTIONS } from "@/user-agent"
+import { getDevicePreset } from "./devices"
 
 export const PRESET_NAME_MAX_LENGTH = 40
 export const VIEWPORT_MIN = 200
@@ -7,11 +7,18 @@ export const VIEWPORT_MAX = 4000
 export const DEVICE_SCALE_MIN = 1
 export const DEVICE_SCALE_MAX = 4
 
-export type PresetField = "name" | "userAgent" | "width" | "height" | "deviceScaleFactor" | "mobile"
+export type PresetField = "name" | "deviceId" | "width" | "height" | "deviceScaleFactor" | "touchMode"
 export type PresetFieldErrors = Partial<Record<PresetField, string>>
 
 /** 校验报错时的字段优先级顺序。 */
-export const PRESET_FIELD_ORDER: PresetField[] = ["name", "userAgent", "width", "height", "deviceScaleFactor", "mobile"]
+export const PRESET_FIELD_ORDER: PresetField[] = [
+  "name",
+  "deviceId",
+  "width",
+  "height",
+  "deviceScaleFactor",
+  "touchMode"
+]
 
 export const normalizePresetName = (name: string) => name.trim().toLowerCase()
 
@@ -37,8 +44,9 @@ export function validatePreset(
   )
     errors.name = "预设名称已存在，请换一个名称"
 
-  if (!USER_AGENT_OPTIONS.some((option) => option.value === input.userAgent))
-    errors.userAgent = "请选择内置的 User-Agent 身份"
+  const device = getDevicePreset(input.deviceId)
+  if (!device) errors.deviceId = "请选择内置设备"
+  if (device?.mobile && input.touchMode !== "mouse" && input.touchMode !== "touch") errors.touchMode = "请选择触摸方式"
 
   if (!isIntegerInRange(viewport.width, VIEWPORT_MIN, VIEWPORT_MAX))
     errors.width = `视口宽度必须是 ${VIEWPORT_MIN}–${VIEWPORT_MAX} 之间的整数`
@@ -51,18 +59,16 @@ export function validatePreset(
     viewport.deviceScaleFactor > DEVICE_SCALE_MAX
   )
     errors.deviceScaleFactor = `设备像素比必须在 ${DEVICE_SCALE_MIN}–${DEVICE_SCALE_MAX} 之间`
-  if (typeof viewport.mobile !== "boolean") errors.mobile = "请选择布局类型"
-
   return {
     draft: {
       name,
-      userAgent: input.userAgent as BrowserPresetDraft["userAgent"],
+      deviceId: device?.id ?? "",
       viewport: {
         width: viewport.width as number,
         height: viewport.height as number,
-        deviceScaleFactor: viewport.deviceScaleFactor as number,
-        mobile: viewport.mobile as boolean
-      }
+        deviceScaleFactor: viewport.deviceScaleFactor as number
+      },
+      ...(device?.mobile ? { touchMode: input.touchMode } : {})
     },
     errors
   }

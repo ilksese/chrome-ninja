@@ -19,7 +19,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 - 操作录制和翻译。
 - 切换浏览器身份：从扩展弹窗或网页右键菜单「chrome ninja → Switch User-Agent」选择全局 UA；「默认」移除覆盖。此功能只改写 HTTP(S) 请求的 `User-Agent` 头，不改 `navigator.userAgent`、Client Hints 或视口，也不启动 CDP。右键菜单沿用弹窗的「切换后立即刷新当前页面」设置，只刷新点击菜单所在的标签页。
 - Cookie 编辑器：在网页中查询、新增、修改与持续禁用当前主机的 Cookie。
-- 浏览器预设：保存 User-Agent 与 viewport 组合，并对单个标签页应用模拟。
+- 浏览器预设：对单个标签页应用内置或自定义设备，模拟 UA、视口和输入方式。
 - 网页内面板（Cookie 编辑器、网络监视器、步骤记录器）可拖动标题栏、拖动右下角调整大小；仅标题栏拖动改变位置或原生缩放改变尺寸后保存布局，普通点击期间的内容增高不保存。各面板使用独立的 `chrome.storage.local` 键 `contentUiPanelLayouts.<panel-key>`，所有站点与标签页共用。恢复与拖动统一保留 8 px 视口边距，拖动的每次移动按面板当前实际尺寸计算边界，各自最小尺寸在小视口下缩小。Cookie 编辑器首次打开的默认布局同样经过边界夹取。
 - 默认配置在 `src/store/options.ts`，类型在 `src/types.ts`。
 
@@ -47,34 +47,34 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 
 从扩展弹窗或选项页的首页卡片进入 `/browser-presets`，页面由 Popup 与 Options 共用；首页卡片同时显示当前标签页的模拟状态与预设名，并提供「退出模拟」。首次进入说明应用预设需要附加调试权限。
 
-预设保存在 `chrome.storage.local.browserPresets`，与 `options` 分开，浏览器重启后保留；首次安装为空，不内置默认预设。记录包含稳定 `id`、唯一 `name`、沿用 `USER_AGENT_OPTIONS` 的 `userAgent`（`default` 表示不覆盖 UA）与 `viewport`（宽、高、设备像素比、mobile）。
+内置预设可直接应用，不可编辑或删除。从内置预设点「自定义」可打开预填表单，保存后才创建具名预设。自定义预设保存在 `chrome.storage.local.customBrowserPresets`，浏览器重启后保留。
 
 - 名称去首尾空格后非空，长度上限 40，唯一性忽略大小写。
 - 宽高为 200–4000 的整数，设备像素比为 1–4；越界时展示校验提示并拒绝保存。
-- 设备档位按钮只填入视口数值，不作为可保存实体，不进入存储。填入后可继续手动微调。
-- UA 身份的移动端声明与视口 mobile 开关不一致时，保存前弹出确认框，列出实际发出的 `sec-ch-ua-mobile`、布局处理方式与指纹割裂风险；取消回到表单，确认后按用户填写的值保存，不做静默修正。
-- 支持编辑全部字段与重命名；删除前二次确认并展示预设名。
+- UA 和移动端布局由来源设备决定，编辑时不能更换设备；自定义预设可调整名称、视口宽高和 DPR。
+- 移动端额外提供触摸方式：默认 `touch` 把鼠标操作转为单指触摸，`mouse` 保留普通鼠标输入，不改变 UA 或视口。桌面端不显示触摸方式。
+- 删除自定义预设前二次确认并展示预设名。
 
 ### 应用与退出
 
-`apply` 对目标标签页附加调试器，下发 `Emulation.setDeviceMetricsOverride`，UA 不为 `default` 时再下发完整身份（`userAgent`、`platform` 与 `userAgentMetadata`），最后重新加载页面。覆盖跟随该标签页跨刷新、站内跳转与 SPA 路由切换，新开标签页不受影响。
+`apply` 对目标标签页附加调试器，下发视口、触摸方式和设备 UA，最后重新加载页面。覆盖跟随该标签页跨刷新、站内跳转与 SPA 路由切换，新开标签页不受影响。
 
 - 模拟中的标签页归入名为 `[ninja] <预设名>` 的标签页分组。同一预设的标签页共用一个分组；扩展只认自己创建的 groupId，用户自建的同名分组不会被认领，分组变空由 Chrome 关闭后扩展同步移除记账。
-- 把标签页移出模拟分组即退出模拟，与页面上的「退出模拟」走同一条收尾路径：归还全局 UA 改写、分离调试器、离开分组并重新加载。
+- 把标签页移出模拟分组即退出模拟，与页面上的「退出模拟」走同一条收尾路径：分离调试器、恢复该标签页的独立 UA 规则、离开分组并重新加载。
 - 标签页已在用户自建分组时，`apply` 先返回 `needsGroupMoveConfirmation` 且不做任何改动；页面弹确认框，确认后带 `confirmGroupMove` 重发，把标签页移出用户分组再归入模拟分组。
-- 已模拟的标签页切换预设时复用同一个调试会话，只重新下发参数并刷新，不分离后再附加，因此不会重复出现调试提示条。从具体 UA 切到「不覆盖」时下发空的 `userAgent` 清除上一次的 UA 覆盖。
+- 已模拟的标签页切换预设时复用同一个调试会话，重新下发全部参数再刷新。切换到 `mouse` 或桌面预设会关闭触摸模拟；切换失败时退出模拟，避免保留部分覆盖。
 
 应用期间浏览器显示一条扩展无法抑制的调试提示条（「"扩展名" started debugging this browser」）；用户在该提示条点击取消或打开 DevTools 都会终止会话，扩展随之退出模拟并给出一次性提示。`chrome://`、扩展页与 Chrome 网上应用店等受限页面无法模拟，`status` 提前返回原因，页面据此在点击前禁用应用按钮。
 
 ### UA 与全局改写
 
-预设选具体 UA 时，全局 `User-Agent` 改写规则被暂停，避免同一请求带上两套身份；退出最后一个模拟标签页后按用户最新的全局选择恢复。选「不覆盖」的预设只模拟视口，不暂停全局规则；若该标签页此前在模拟具体 UA，「不覆盖」会归还那次暂停。Safari 类身份不下发 `userAgentMetadata`，全部 `sec-ch-ua-*` 请求头因此不出现。
+模拟期间，CDP 预设只接管当前标签页：独立 UA 规则在该标签页不生效，首页的独立 UA 入口禁用，右键选择不会修改设置。其他标签页仍可使用独立 UA；任一标签页退出模拟后即恢复当前的独立 UA 规则。Safari 类设备身份不下发 `userAgentMetadata`，因此不发送 `sec-ch-ua-*` 请求头。
 
 ### 使用中的锁定
 
 被至少一个标签页使用的预设不能编辑、重命名或删除，列表显示「正在 N 个标签页使用」并提供「停止」。停止逐个退出所有使用该预设的标签页，最后一个使用者退出后预设自动解锁。前端只读后台下发的使用数量，不自行推断锁定态。
 
-后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令（`list`、`create`、`update`、`delete`、`apply`、`simulate-exit`、`stop`、`status`），校验规则在 `src/browser-preset/validation.ts`，页面与后台共用同一份；UA 身份包在 `src/browser-preset/identity.ts`，设备档位在 `src/browser-preset/devices.ts`。
+后台在 `src/browser-preset/background.ts` 处理 `browser-preset` 命令，页面与后台共用 `src/browser-preset/validation.ts`；UA 身份包在 `src/browser-preset/identity.ts`，内置设备目录在 `src/browser-preset/devices.ts`。
 
 ## 命令
 

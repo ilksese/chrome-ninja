@@ -1,11 +1,5 @@
-import type { MobileConflict, UserAgentIdentity, UserAgentMetadata } from "./types"
-import type { UserAgentType } from "@/types"
-import { getUserAgentOption } from "@/user-agent"
+import type { UserAgentIdentity, UserAgentMetadata } from "./types"
 
-/**
- * 内置 UA 与 Chrome/127 对齐。UA 串本身来自 `USER_AGENT_OPTIONS`，这里只补身份的另一半：
- * `navigator.platform` 与 `userAgentMetadata`。版本号改动时只改这几个常量。
- */
 const CHROME_BRAND_VERSION = "127"
 const CHROME_FULL_VERSION = "127.0.0.0"
 
@@ -26,10 +20,9 @@ const chromeFullVersionList = (): UserAgentMetadata["fullVersionList"] => [
   { brand: "Chromium", version: CHROME_FULL_VERSION }
 ]
 
-type IdentityFields = Omit<UserAgentIdentity, "userAgent">
-
-const IDENTITIES: Record<Exclude<UserAgentType, "default">, IdentityFields> = {
-  "chrome-desktop": {
+export const IDENTITIES: Record<"laptop" | "pixel" | "iphone" | "ipad", UserAgentIdentity> = {
+  laptop: {
+    userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_FULL_VERSION} Safari/537.36`,
     platform: "Win32",
     userAgentMetadata: {
       brands: chromeBrands(),
@@ -44,8 +37,9 @@ const IDENTITIES: Record<Exclude<UserAgentType, "default">, IdentityFields> = {
       formFactors: ["Desktop"]
     }
   },
-  "chrome-android": {
-    platform: "Linux armv81",
+  pixel: {
+    userAgent: `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_FULL_VERSION} Mobile Safari/537.36`,
+    platform: "Linux armv8l",
     userAgentMetadata: {
       brands: chromeBrands(),
       fullVersionList: chromeFullVersionList(),
@@ -53,7 +47,7 @@ const IDENTITIES: Record<Exclude<UserAgentType, "default">, IdentityFields> = {
       platformVersion: "14.0.0",
       // 架构与位数为空：UA 串无法判定具体架构，留空也不会继承宿主的 x86 / "64"。
       architecture: "",
-      model: "Pixel 8 Pro",
+      model: "Pixel 8",
       mobile: true,
       bitness: "",
       wow64: false,
@@ -61,29 +55,14 @@ const IDENTITIES: Record<Exclude<UserAgentType, "default">, IdentityFields> = {
     }
   },
   // Safari 类身份不下发 metadata，效果是全部 sec-ch-ua-* 请求头不出现。
-  "safira-desktop": { platform: "MacIntel" },
-  "safira-ios": { platform: "iPhone" }
-}
-
-/** 查询内置 UA 身份包；「不覆盖」没有身份，返回 null。 */
-export function getUaIdentity(value: UserAgentType): UserAgentIdentity | null {
-  if (value === "default") return null
-  const fields = IDENTITIES[value]
-  if (!fields) return null
-  return { userAgent: getUserAgentOption(value).ua, ...fields }
-}
-
-/**
- * 比对 UA 身份声明的 `mobile`（决定实际发出的 `sec-ch-ua-mobile`）与视口的 `mobile`
- * （决定布局）。Safari 类身份没有 metadata、不产生 client hints，因此不参与比对。
- */
-export function mobileConflictOf(userAgent: UserAgentType, viewportMobile: boolean): MobileConflict | null {
-  const metadata = getUaIdentity(userAgent)?.userAgentMetadata
-  if (!metadata || metadata.mobile === viewportMobile) return null
-  return {
-    userAgentMobile: metadata.mobile,
-    viewportMobile,
-    secChUaMobile: metadata.mobile ? "?1" : "?0",
-    layout: viewportMobile ? "mobile" : "desktop"
+  iphone: {
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    platform: "iPhone"
+  },
+  ipad: {
+    userAgent:
+      "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    platform: "iPad"
   }
 }

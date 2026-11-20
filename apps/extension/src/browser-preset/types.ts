@@ -1,17 +1,17 @@
-import type { UserAgentType } from "@/types"
-
 export type BrowserPresetViewport = {
   width: number
   height: number
   deviceScaleFactor: number
-  mobile: boolean
 }
+
+export type TouchMode = "mouse" | "touch"
 
 export type BrowserPreset = {
   id: string
   name: string
-  userAgent: UserAgentType
+  deviceId: string
   viewport: BrowserPresetViewport
+  touchMode?: TouchMode
 }
 
 export type BrowserPresetDraft = Omit<BrowserPreset, "id">
@@ -36,17 +36,9 @@ export type UserAgentIdentity = {
   userAgentMetadata?: UserAgentMetadata
 }
 
-/** 移动端判定冲突的详情，供预设页解释「实际发什么」与风险。 */
-export type MobileConflict = {
-  userAgentMobile: boolean
-  viewportMobile: boolean
-  secChUaMobile: "?0" | "?1"
-  layout: "mobile" | "desktop"
-}
-
 export type BrowserPresetCommand =
   | { type: "list" }
-  | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string; confirmConflict?: boolean }
+  | { type: "create" | "update"; preset: BrowserPresetDraft; id?: string }
   | { type: "delete"; id: string }
   | { type: "apply"; id: string; confirmGroupMove?: boolean }
   | { type: "simulate-exit" }
@@ -58,9 +50,6 @@ export type BrowserPresetRequest = { target: "browser-preset" } & BrowserPresetC
 export type BrowserPresetResponse = {
   ok: boolean
   error?: string
-  /** 移动端判定冲突：本次未写入任何内容，需要用户确认后带 `confirmConflict` 重发。 */
-  needsConfirmation?: boolean
-  conflict?: MobileConflict
   /** 标签页在用户自建分组中：本次未做任何改动，确认移出分组后带 `confirmGroupMove` 重发。 */
   needsGroupMoveConfirmation?: boolean
   presets?: BrowserPreset[]
@@ -86,4 +75,4 @@ export type AppliedPreset = { presetId: string; groupId: number }
  */
 export type BrowserPresetUsage = Record<string, number>
 
-export const BROWSER_PRESETS_KEY = "browserPresets"
+export const BROWSER_PRESETS_KEY = "customBrowserPresets"

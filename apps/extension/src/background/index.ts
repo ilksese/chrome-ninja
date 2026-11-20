@@ -2,7 +2,7 @@ import { ninjaLog } from "@chrome-ninja/utils"
 import { connectDevBridgeBackground, DEV_BRIDGE_ENABLED } from "@chrome-ninja/dev-bridge/client"
 import { mergeOptions } from "@/store/options"
 import type { Options } from "@/types"
-import { applyUserAgentRule } from "@/user-agent"
+import { applyUserAgentRule, switchUserAgent, USER_AGENT_OPTIONS, USER_AGENT_RULE_ID } from "@/user-agent"
 import { registerBossAntiDetectionBackground } from "@/user-agent/boss-navigation"
 import { registerLoginStateExportBackground } from "@/login-state/background"
 import { registerQrBackground } from "@/qr/background"
@@ -32,6 +32,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   switch (details.reason) {
     case chrome.runtime.OnInstalledReason.INSTALL:
     case chrome.runtime.OnInstalledReason.UPDATE: {
+      void chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [USER_AGENT_RULE_ID] }).catch(console.error)
       chrome.storage.local.get(["options"], ({ options }) => {
         const merged = mergeOptions(options)
         chrome.storage.local.set({ options: merged }, () => {
@@ -65,7 +66,7 @@ async function getStoredOptions() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function handleMessages(message: any) {
+function handleMessages(message: any, sender: chrome.runtime.MessageSender, respond: (response: unknown) => void) {
   // Return early if this message isn't meant for the background script
   if (message.target !== "background") {
     return false
@@ -73,6 +74,18 @@ function handleMessages(message: any) {
 
   // Dispatch the message to an appropriate handler.
   switch (message.type) {
+    case "set-user-agent": {
+      if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))) return false
+      const option = USER_AGENT_OPTIONS.find((option) => option.value === message.userAgent)
+      if (!option || typeof message.reload !== "boolean") return false
+      void chrome.tabs.query({ active: true, lastFocusedWindow: true, currentWindow: true })
+        .then(([tab]) => switchUserAgent(option.value, tab?.id, message.reload))
+        .then(
+          () => respond({ ok: true }),
+          (error: unknown) => respond({ ok: false, error: error instanceof Error ? error.message : "User-Agent 应用失败" })
+        )
+      return true
+    }
     case "executeScript":
       chrome.tabs.query({ active: true, lastFocusedWindow: true, currentWindow: true }).then(([tab]) => {
         chrome.scripting.executeScript({

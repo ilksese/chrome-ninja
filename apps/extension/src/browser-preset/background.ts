@@ -8,17 +8,11 @@ import type {
 } from "./types"
 import { pageUnavailableReason } from "@/cookie-editor/types"
 import { BROWSER_PRESETS_KEY } from "./types"
-import { getUaIdentity, mobileConflictOf } from "./identity"
+import { BUILTIN_PRESETS, getDevicePreset } from "./devices"
 import { firstPresetError, validatePreset } from "./validation"
-import { resumeUserAgentRule, suspendUserAgentRule } from "@/user-agent"
+import { setUserAgentRuleExcluded } from "@/user-agent"
 
 const appliedByTab = new Map<number, AppliedPreset>()
-
-/**
- * 已让全局 UA 改写让位的标签页。与 `appliedByTab` 分开记录，是因为两者的进出条件不同：
- * 「不覆盖」UA 的预设只模拟视口，不碰全局规则；切到这类预设时必须归还上一次借走的让位。
- */
-const suspendedTabs = new Set<number>()
 
 /** 扩展自己创建的标签页分组；用户自建的分组永远不在此集合内。 */
 const ownedGroupIds = new Set<number>()
@@ -108,19 +102,19 @@ async function inForeignGroup(tabId: number) {
 
 /** 只清内存；标签页已消失时浏览器自己会清掉覆盖。 */
 async function forgetTab(tabId: number) {
-  if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
   appliedByTab.delete(tabId)
+  await setUserAgentRuleExcluded(tabId, false)
 }
 
 /**
- * 退出模拟的唯一收尾路径：归还让位、分离调试会话、离开模拟分组、重新加载，最后清空内存映射。
+ * 退出模拟的唯一收尾路径：分离调试会话、恢复该标签页的 UA 规则、离开模拟分组并重载。
  * 用户移出分组触发的退出与预设页/首页发起的退出共用这里。
  */
 async function endSession(tabId: number) {
   if (!appliedByTab.has(tabId)) return
-  // 让位是应用时借的，必须在这个统一出口归还，否则全局改写会一直处于移除状态。
-  await forgetTab(tabId)
+  appliedByTab.delete(tabId)
   await chrome.debugger.detach({ tabId }).catch(() => {})
+  await setUserAgentRuleExcluded(tabId, false)
   // ungroup 只处理仍在扩展分组内的标签页；分组空掉后 Chrome 会自行关闭。
   await chrome.tabs.ungroup(tabId).catch(() => {})
   await chrome.tabs.reload(tabId).catch(() => {})
@@ -145,16 +139,25 @@ async function attributeDetach(source: chrome.debugger.Debuggee, reason: string)
 async function applyPreset(preset: BrowserPreset, tabId: number) {
   const reason = await unavailableReasonFor(tabId)
   if (reason) throw new Error(reason)
-  const identity = getUaIdentity(preset.userAgent)
+  const device = getDevicePreset(preset.deviceId)
+  if (!device) throw new Error("预设的内置设备不存在")
   // 已在本扩展的调试会话里时只覆盖参数：重新 attach 会让浏览器重弹调试提示条。
   // 会话随标签页存续，因此只要 appliedByTab 有记录就认定会话仍可用；真掉线时 sendCommand 会失败。
   const reusing = appliedByTab.has(tabId)
   if (!reusing) await chrome.debugger.attach({ tabId }, "1.3")
   try {
-    await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", preset.viewport)
-    // 「不覆盖」也必须考虑上一次的覆盖：复用会话时旧 UA 还留在标签页里，不显式清除就还是旧身份。
-    if (identity) await applyUaOverride(tabId, identity)
-    else if (reusing) await clearUaOverride(tabId)
+    if (!reusing) await setUserAgentRuleExcluded(tabId, true)
+    await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", {
+      ...preset.viewport,
+      mobile: device.mobile
+    })
+    const touchEnabled = device.mobile && preset.touchMode === "touch"
+    await chrome.debugger.sendCommand({ tabId }, "Emulation.setTouchEmulationEnabled", { enabled: touchEnabled })
+    await chrome.debugger.sendCommand({ tabId }, "Emulation.setEmitTouchEventsForMouse", {
+      enabled: touchEnabled,
+      configuration: device.mobile ? "mobile" : "desktop"
+    })
+    await applyUaOverride(tabId, device.identity)
     // 换组到写回映射之间必然有一段旧映射与新归属不一致的窗口，扩展自己的事件必须在这段时间内被忽略。
     groupTransitions.add(tabId)
     let groupId: number
@@ -164,35 +167,17 @@ async function applyPreset(preset: BrowserPreset, tabId: number) {
     } finally {
       groupTransitions.delete(tabId)
     }
-    await syncGlobalUserAgentRule(tabId, Boolean(identity))
   } catch (error) {
-    // 复用中的会话失败可能只是参数非法：保留已有会话与映射，退出模拟仍可正常分离。
-    if (!reusing) {
-      // 失败时可能已让全局改写让位（入组成功后才切换），这里成对归还，避免规则一直处于移除状态。
-      if (suspendedTabs.delete(tabId)) await resumeUserAgentRule()
+    if (reusing) {
+      await endSession(tabId)
+    } else {
       await chrome.debugger.detach({ tabId }).catch(() => {})
-      appliedByTab.delete(tabId)
+      await forgetTab(tabId)
     }
     throw error
   }
   // 全部覆盖下发完成后才 reload，避免先加载出未模拟的页面。
   await chrome.tabs.reload(tabId)
-}
-
-/**
- * 让全局 UA 改写与标签页级模拟互斥：具体 UA 期间移除全局规则，否则同一请求会带上两套身份。
- * 「不覆盖」的预设只模拟视口，全局规则的启用状态必须原样保留，因此这里只在状态真正切换时写规则。
- * 原始选择由 `user-agent` 模块记住，退出时按用户最新的选择恢复（见 `resumeUserAgentRule`）。
- */
-async function syncGlobalUserAgentRule(tabId: number, shouldSuspend: boolean) {
-  if (shouldSuspend === suspendedTabs.has(tabId)) return
-  if (shouldSuspend) {
-    suspendedTabs.add(tabId)
-    await suspendUserAgentRule()
-  } else {
-    suspendedTabs.delete(tabId)
-    await resumeUserAgentRule()
-  }
 }
 
 /**
@@ -209,18 +194,6 @@ async function applyUaOverride(tabId: number, identity: UserAgentIdentity) {
     "Emulation.setUserAgentOverride",
     userAgentMetadata ? { userAgent, platform, userAgentMetadata } : { userAgent, platform }
   )
-}
-
-/**
- * 清除 UA 覆盖，回到宿主浏览器的真实身份。
- * CDP 没有单独的 clear 命令，空 `userAgent` 就是「不覆盖」的表达：Chromium 的 `EmulationHandler`
- * 只在 `user_agent_` 非空时改写 `User-Agent` 头、且空串时不再下发 client hints，
- * Blink 侧同样在覆盖串为空时回退到真实 `navigator.userAgent`。
- * 空串与 `platform`、`userAgentMetadata` 同时给出会被拒绝（"Empty userAgent invalid with userAgentMetadata provided"），
- * 因此只传 `userAgent: ""`。`navigator.platform` 的覆盖值为空时也自动回退真实值，无需单独清除。
- */
-async function clearUaOverride(tabId: number) {
-  await chrome.debugger.sendCommand({ tabId }, "Emulation.setUserAgentOverride", { userAgent: "" })
 }
 
 /**
@@ -267,6 +240,11 @@ function usageOf(presets: BrowserPreset[]): BrowserPresetUsage {
   return Object.fromEntries(presets.map((preset) => [preset.id, usageCountOf(preset.id)]))
 }
 
+function listResponse(customPresets: BrowserPreset[]): BrowserPresetResponse {
+  const presets = [...BUILTIN_PRESETS, ...customPresets]
+  return { ok: true, presets, usage: usageOf(presets) }
+}
+
 export function registerBrowserPresetBackground() {
   // 用户把标签页移出扩展分组即视为退出模拟；用户自建分组不在 ownedGroupIds 内，不受影响。
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -297,38 +275,37 @@ export function registerBrowserPresetBackground() {
       const message = incoming
       const handle = async (): Promise<BrowserPresetResponse> => {
         if (sender.id !== chrome.runtime.id) throw new Error("不受信任的扩展消息")
-        const presets = await loadPresets()
-        if (message.type === "list") return { ok: true, presets, usage: usageOf(presets) }
+        const customPresets = await loadPresets()
+        const presets = [...BUILTIN_PRESETS, ...customPresets]
+        if (message.type === "list") return listResponse(customPresets)
         if (message.type === "create" || message.type === "update") {
           const existing =
-            message.type === "update" ? presets.find((preset) => preset.id === message.id) : undefined
-          if (message.type === "update" && !existing) throw new Error("预设不存在，可能已被删除")
+            message.type === "update" ? customPresets.find((preset) => preset.id === message.id) : undefined
+          if (message.type === "update" && !existing) throw new Error("只能编辑自定义预设")
           // 编辑与重命名走同一条命令，锁定必须在写入前拒绝。
           if (existing) assertPresetUnused(existing.id)
           const { draft, errors } = validatePreset(message.preset, presets, existing?.id)
           const error = firstPresetError(errors)
           if (error) throw new Error(error)
-          // 冲突且未确认时什么都不写：取消保存就是保持现状。
-          const conflict = mobileConflictOf(draft.userAgent, draft.viewport.mobile)
-          if (conflict && message.confirmConflict !== true) return { ok: false, needsConfirmation: true, conflict }
+          if (existing && draft.deviceId !== existing.deviceId) throw new Error("不能更换来源设备")
           const preset: BrowserPreset = { id: existing?.id ?? crypto.randomUUID(), ...draft }
           const next = existing
-            ? presets.map((item) => (item.id === preset.id ? preset : item))
-            : [...presets, preset]
+            ? customPresets.map((item) => (item.id === preset.id ? preset : item))
+            : [...customPresets, preset]
           await savePresets(next)
-          return { ok: true, preset, presets: next, usage: usageOf(next) }
+          return { ...listResponse(next), preset }
         }
         if (message.type === "delete") {
-          if (!presets.some((preset) => preset.id === message.id)) throw new Error("预设不存在，可能已被删除")
+          if (!customPresets.some((preset) => preset.id === message.id)) throw new Error("只能删除自定义预设")
           assertPresetUnused(message.id)
-          const next = presets.filter((preset) => preset.id !== message.id)
+          const next = customPresets.filter((preset) => preset.id !== message.id)
           await savePresets(next)
-          return { ok: true, presets: next, usage: usageOf(next) }
+          return listResponse(next)
         }
         if (message.type === "stop") {
           if (!presets.some((preset) => preset.id === message.id)) throw new Error("预设不存在，可能已被删除")
           await stopPreset(message.id)
-          return { ok: true, presets, usage: usageOf(presets) }
+          return listResponse(customPresets)
         }
         if (message.type === "status") {
           const tabId = await targetTabId(sender)

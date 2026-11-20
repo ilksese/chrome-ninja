@@ -3,7 +3,7 @@ import { createElementCopyMenus, handleElementCopyMenu } from "@/element-copy/ba
 import { toggleNetmonForTab } from "@/network-monitor/background"
 import { mergeOptions } from "@/store/options"
 import type { UserAgentType } from "@/types"
-import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
+import { getUserAgentOption, switchUserAgent, USER_AGENT_OPTIONS } from "@/user-agent"
 
 const QR_MENU_PARENT_ID = "chrome-ninja"
 const QR_MENU_GENERATE_ID = "chrome-ninja-generate-qr"
@@ -36,7 +36,12 @@ export function registerQrBackground(openCookieEditor: (tabId: number) => Promis
     const userAgent = USER_AGENT_OPTIONS.find((option) => userAgentMenuItemId(option.value) === info.menuItemId)
     if (userAgent) {
       if (!info.wasChecked) {
-        void switchUserAgent(userAgent.value, tab?.id).catch((error) => console.error("右键切换 User-Agent 失败", error))
+        void switchUserAgent(userAgent.value, tab?.id).catch(async (error) => {
+          const { options } = await chrome.storage.local.get("options")
+          const current = getUserAgentOption(mergeOptions(options).userAgent)
+          await chrome.contextMenus.update(userAgentMenuItemId(current.value), { checked: true })
+          console.warn("右键未切换 User-Agent", error)
+        }).catch((error) => console.error("同步右键菜单 User-Agent 失败", error))
       }
       return
     }
@@ -55,20 +60,6 @@ export function registerQrBackground(openCookieEditor: (tabId: number) => Promis
 
 function userAgentMenuItemId(value: UserAgentType) {
   return `${USER_AGENT_MENU_ID}-${value}`
-}
-
-async function switchUserAgent(userAgent: UserAgentType, tabId?: number) {
-  const { options } = await chrome.storage.local.get("options")
-  const currentOptions = mergeOptions(options)
-  try {
-    await applyUserAgentRule(userAgent)
-    await chrome.storage.local.set({ options: { ...currentOptions, userAgent } })
-  } catch (error) {
-    const current = getUserAgentOption(currentOptions.userAgent)
-    await chrome.contextMenus.update(userAgentMenuItemId(current.value), { checked: true })
-    throw error
-  }
-  if (currentOptions.reloadOnUserAgentChange && tabId !== undefined) await chrome.tabs.reload(tabId)
 }
 
 async function createQrMenus() {

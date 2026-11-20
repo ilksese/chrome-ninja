@@ -10,7 +10,7 @@ import LoginStateExport from "@components/settings/LoginStateExport"
 import QrPanel from "@/qr/panel"
 import { optionsAtom } from "@/store/options"
 import type { TranslateOptionsType, UserAgentType } from "@/types"
-import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
+import { getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
 import NetworkMonitorToggle from "@/components/NetworkMonitorToggle"
 
 type HomeProps = {
@@ -208,6 +208,18 @@ const Home = ({ layout }: HomeProps) => {
 
   useEffect(() => {
     void refreshSimulation()
+    const onGroupChange = (_tabId: number, changes: chrome.tabs.TabChangeInfo) => {
+      if (changes.groupId !== undefined) void refreshSimulation()
+    }
+    const onTabChange = () => void refreshSimulation()
+    chrome.tabs.onActivated.addListener(onTabChange)
+    chrome.tabs.onUpdated.addListener(onGroupChange)
+    chrome.windows.onFocusChanged.addListener(onTabChange)
+    return () => {
+      chrome.tabs.onActivated.removeListener(onTabChange)
+      chrome.tabs.onUpdated.removeListener(onGroupChange)
+      chrome.windows.onFocusChanged.removeListener(onTabChange)
+    }
   }, [])
 
   const exitSimulation = async () => {
@@ -387,9 +399,13 @@ const Home = ({ layout }: HomeProps) => {
     setIsApplying(true)
     setError("")
     try {
-      await applyUserAgentRule(selectedUserAgent)
-      await setOptions({ ...options, userAgent: selectedUserAgent, reloadOnUserAgentChange })
-      if (reloadOnUserAgentChange) await chrome.tabs.reload()
+      const response = await chrome.runtime.sendMessage({
+        target: "background",
+        type: "set-user-agent",
+        userAgent: selectedUserAgent,
+        reload: reloadOnUserAgentChange
+      })
+      if (!response?.ok) throw new Error(response?.error ?? "User-Agent 应用失败")
       closeUserAgentDialog()
     } catch (err) {
       setError(err instanceof Error ? err.message : "User-Agent 应用失败")
@@ -445,12 +461,14 @@ const Home = ({ layout }: HomeProps) => {
               ref={triggerRef}
               className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white active:bg-[#e8f2ff] disabled:opacity-60"
               type="button"
-              disabled={isApplying}
+              disabled={isApplying || !!simulatingPreset}
               onClick={openUserAgentDialog}>
               <span className="grid size-10 place-items-center rounded-xl bg-[#101828] text-sm font-semibold text-white shadow-[0_10px_22px_rgba(16,24,40,0.18)]">UA</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-slate-950">切换浏览器身份</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">当前为 {activeUserAgent.label}</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">
+                  {simulatingPreset ? "当前标签页由浏览器预设接管" : `当前为 ${activeUserAgent.label}`}
+                </span>
               </span>
               <span className="text-2xl leading-none text-[#005bd1]">›</span>
             </button>
@@ -525,7 +543,7 @@ const Home = ({ layout }: HomeProps) => {
               <span className="grid size-10 place-items-center rounded-xl bg-[#e8f2ff] text-[11px] font-semibold text-[#005bd1] shadow-sm">BP</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-slate-950">浏览器预设</span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">为单个标签页切换 User-Agent 与 viewport</span>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">模拟设备的 UA、视口和输入方式</span>
                 <span className="mt-0.5 block truncate text-xs text-slate-500" role="status">
                   {simulatingPreset ? `正在模拟「${simulatingPreset.name}」` : "当前没有模拟"}
                 </span>
@@ -589,7 +607,7 @@ const Home = ({ layout }: HomeProps) => {
       </section>
 
       <Dialog
-        open={isUserAgentOpen}
+        open={isUserAgentOpen && !simulatingPreset}
         titleId="user-agent-title"
         onClose={closeUserAgentDialog}
         initialFocusRef={firstRadioRef}

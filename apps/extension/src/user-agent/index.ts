@@ -1,4 +1,5 @@
 import type { UserAgentType } from "@/types"
+import { mergeOptions } from "@/store/options"
 
 export const USER_AGENT_RULE_ID = 1001
 
@@ -34,50 +35,52 @@ export function getUserAgentOption(value: UserAgentType) {
   return USER_AGENT_OPTIONS.find((option) => option.value === value) ?? USER_AGENT_OPTIONS[0]
 }
 
-/**
- * 浏览器预设在单标签页上模拟具体 UA 期间，全局改写必须让位：两者同时生效会给同一请求
- * 产生互相矛盾的 User-Agent。这里按「正在模拟的标签页数」计数，只有归零时才恢复。
- */
-let suspensionCount = 0
+const excludedTabs = new Set<number>()
+let requestedUserAgent: UserAgentType = "default"
+let pendingRuleUpdate = Promise.resolve()
 
-/** 用户最近一次选择的全局 UA。暂停期间照常记录，恢复时按最新意图下发，不丢用户的改动。 */
-let requestedUserAgent: UserAgentType | null = null
-
-/**
- * 暂停全局改写并立即移除现有规则。全局设置的变更监听照常调用 `applyUserAgentRule`，
- * 它会把新选择记下来但不写规则，因此不会被这次暂停覆盖掉。
- */
-export async function suspendUserAgentRule() {
-  suspensionCount += 1
-  if (suspensionCount > 1) return
-  await writeUserAgentRule("default")
+export function isUserAgentRuleExcluded(tabId: number | undefined) {
+  return tabId !== undefined && excludedTabs.has(tabId)
 }
 
-/** 恢复全局改写：计数归零后按用户最新的选择重新下发规则。 */
-export async function resumeUserAgentRule() {
-  suspensionCount = Math.max(0, suspensionCount - 1)
-  if (suspensionCount > 0 || requestedUserAgent === null) return
-  await writeUserAgentRule(requestedUserAgent)
+export function setUserAgentRuleExcluded(tabId: number, excluded: boolean) {
+  if (excluded) excludedTabs.add(tabId)
+  else excludedTabs.delete(tabId)
+  return syncRule()
 }
 
 export async function applyUserAgentRule(value: UserAgentType) {
   requestedUserAgent = value
-  // 让位给标签页级模拟：只记住意图，规则由 `resumeUserAgentRule` 在退出后补发。
-  if (suspensionCount > 0) return
-  await writeUserAgentRule(value)
+  await syncRule()
 }
 
-async function writeUserAgentRule(value: UserAgentType) {
-  const option = getUserAgentOption(value)
+export async function switchUserAgent(userAgent: UserAgentType, tabId: number | undefined, reload?: boolean) {
+  const { options } = await chrome.storage.local.get("options")
+  const current = mergeOptions(options)
+  if (isUserAgentRuleExcluded(tabId)) throw new Error("当前标签页的 User-Agent 由浏览器预设接管")
+  const reloadOnUserAgentChange = reload ?? current.reloadOnUserAgentChange
+  await applyUserAgentRule(userAgent)
+  await chrome.storage.local.set({ options: { ...current, userAgent, reloadOnUserAgentChange } })
+  if (reloadOnUserAgentChange && tabId !== undefined) await chrome.tabs.reload(tabId)
+}
+
+function syncRule() {
+  const update = pendingRuleUpdate.then(writeUserAgentRule)
+  pendingRuleUpdate = update.catch(() => {})
+  return update
+}
+
+async function writeUserAgentRule() {
+  const option = getUserAgentOption(requestedUserAgent)
 
   if (option.value === "default") {
-    await chrome.declarativeNetRequest.updateDynamicRules({
+    await chrome.declarativeNetRequest.updateSessionRules({
       removeRuleIds: [USER_AGENT_RULE_ID]
     })
     return
   }
 
-  await chrome.declarativeNetRequest.updateDynamicRules({
+  await chrome.declarativeNetRequest.updateSessionRules({
     removeRuleIds: [USER_AGENT_RULE_ID],
     addRules: [
       {
@@ -94,6 +97,7 @@ async function writeUserAgentRule(value: UserAgentType) {
           ]
         },
         condition: {
+          ...(excludedTabs.size ? { excludedTabIds: [...excludedTabs] } : {}),
           urlFilter: "|http",
           resourceTypes: [
             chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,

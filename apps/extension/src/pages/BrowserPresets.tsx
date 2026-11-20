@@ -3,14 +3,14 @@ import type {
   BrowserPresetDraft,
   BrowserPresetResponse,
   BrowserPresetUsage,
-  MobileConflict
+  TouchMode
 } from "@/browser-preset/types"
-import type { UserAgentType } from "@/types"
+import type { Resolver } from "react-hook-form"
 import { useCallback, useEffect, useRef, useState } from "preact/hooks"
-import { Controller, type Resolver, useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { cn } from "@chrome-ninja/utils"
 import Dialog from "@components/Dialog"
-import { DEVICE_PRESETS } from "@/browser-preset/devices"
+import { getDevicePreset } from "@/browser-preset/devices"
 import {
   DEVICE_SCALE_MAX,
   DEVICE_SCALE_MIN,
@@ -19,7 +19,6 @@ import {
   VIEWPORT_MAX,
   VIEWPORT_MIN
 } from "@/browser-preset/validation"
-import { USER_AGENT_OPTIONS } from "@/user-agent"
 
 type BrowserPresetsProps = {
   layout: "popup" | "options"
@@ -28,41 +27,40 @@ type BrowserPresetsProps = {
 type FormState = {
   id?: string
   name: string
-  userAgent: UserAgentType
+  deviceId: string
   width: string
   height: string
   deviceScaleFactor: string
-  mobile: boolean
+  touchMode?: TouchMode
 }
 
 const EMPTY_FORM: FormState = {
   name: "",
-  userAgent: "default",
+  deviceId: "",
   width: "1280",
   height: "720",
-  deviceScaleFactor: "1",
-  mobile: false
+  deviceScaleFactor: "1"
 }
 
 const toDraft = (form: FormState): BrowserPresetDraft => ({
   name: form.name,
-  userAgent: form.userAgent,
+  deviceId: form.deviceId,
+  touchMode: form.touchMode,
   viewport: {
     width: Number(form.width),
     height: Number(form.height),
-    deviceScaleFactor: Number(form.deviceScaleFactor),
-    mobile: form.mobile
+    deviceScaleFactor: Number(form.deviceScaleFactor)
   }
 })
 
 const toForm = (preset: BrowserPreset): FormState => ({
   id: preset.id,
   name: preset.name,
-  userAgent: preset.userAgent,
+  deviceId: preset.deviceId,
   width: String(preset.viewport.width),
   height: String(preset.viewport.height),
   deviceScaleFactor: String(preset.viewport.deviceScaleFactor),
-  mobile: preset.viewport.mobile
+  touchMode: preset.touchMode
 })
 
 const fieldClass =
@@ -89,7 +87,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const [pendingDelete, setPendingDelete] = useState<BrowserPreset | null>(null)
   // 标签页在用户自建分组里：移出是有损操作，应用前必须由用户确认。
   const [pendingGroupMove, setPendingGroupMove] = useState<BrowserPreset | null>(null)
-  const [conflict, setConflict] = useState<MobileConflict | null>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
   const presetsRef = useRef(presets)
   presetsRef.current = presets
@@ -108,7 +105,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     handleSubmit,
     reset,
     setFocus,
-    setValue,
     trigger,
     formState: { isSubmitted, isValid }
   } = useForm<FormState>({
@@ -170,17 +166,15 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
     if (formOpen) void trigger()
   }, [editingId, formOpen, trigger])
 
-  const openCreate = () => {
+  const openCreate = (preset: BrowserPreset) => {
     setError("")
-    setConflict(null)
     setEditingId(undefined)
-    reset({ ...EMPTY_FORM })
+    reset({ ...toForm(preset), id: undefined, name: "" })
     setFormOpen(true)
   }
 
   const openEdit = (preset: BrowserPreset) => {
     setError("")
-    setConflict(null)
     setEditingId(preset.id)
     reset(toForm(preset))
     setFormOpen(true)
@@ -189,12 +183,11 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
   const closeForm = () => {
     setFormOpen(false)
     setEditingId(undefined)
-    setConflict(null)
   }
 
   const canSave = formOpen && isValid && !saving
 
-  const save = async (confirmConflict = false) => {
+  const save = async () => {
     if (!formOpen) return
     if (!(await trigger())) return
     const values = getValues()
@@ -204,14 +197,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({
         type: editingId ? "update" : "create",
         ...(editingId ? { id: editingId } : {}),
-        ...(confirmConflict ? { confirmConflict: true } : {}),
         preset: toDraft(values)
       })
-      // 冲突时后台未写入任何内容，确认后带着标记重发同一份草稿。
-      if (response?.needsConfirmation) {
-        setConflict(response.conflict ?? null)
-        return
-      }
       if (!response?.ok) throw new Error(response?.error ?? "保存失败")
       applyList(response)
       closeForm()
@@ -221,9 +208,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       setSaving(false)
     }
   }
-
-  // 取消只关闭确认框：表单与用户填写的值保持原样，存储未被改动。
-  const cancelConflict = () => setConflict(null)
 
   const confirmDelete = async () => {
     if (!pendingDelete) return
@@ -265,6 +249,8 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       setNotice(`已应用「${preset.name}」`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "应用预设失败")
+      void refreshStatus()
+      void refresh()
     } finally {
       setApplyingId("")
     }
@@ -298,7 +284,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
       const response = await send({ type: "stop", id: preset.id })
       if (!response?.ok) throw new Error(response?.error ?? "停止失败")
       applyList(response)
-      setSimulatingId(undefined)
+      setSimulatingId((id) => (id === preset.id ? undefined : id))
       setNotice(`已停止「${preset.name}」`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "停止失败")
@@ -309,13 +295,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
 
   const simulatingPreset = simulatingId ? presets.find((preset) => preset.id === simulatingId) : undefined
 
-  const selectDevicePreset = (preset: (typeof DEVICE_PRESETS)[number]) => {
-    const options = { shouldDirty: true, shouldTouch: true, shouldValidate: true }
-    setValue("width", String(preset.viewport.width), options)
-    setValue("height", String(preset.viewport.height), options)
-    setValue("deviceScaleFactor", String(preset.viewport.deviceScaleFactor), options)
-    setValue("mobile", preset.viewport.mobile, options)
-  }
+  const formDevice = formOpen ? getDevicePreset(getValues("deviceId")) : undefined
 
   const cancelDelete = () => {
     setPendingDelete(null)
@@ -332,26 +312,15 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
             </span>
             <h1 className="mt-1 text-base font-semibold leading-5 text-slate-950">浏览器预设</h1>
           </span>
-          {!formOpen && (
-            <button
-              className="shrink-0 rounded-xl bg-[#101828] px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-[#1d2939] active:bg-[#344054]"
-              type="button"
-              onClick={openCreate}>
-              新建预设
-            </button>
-          )}
         </div>
 
         <p className="mt-3 rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-3 py-2.5 text-xs leading-5 text-[#005bd1]">
-          浏览器预设通过 CDP 模拟单个标签页的 User-Agent 与
-          viewport，应用时需要附加调试权限。应用后浏览器会显示一条调试提示条，这是浏览器的既有行为。
+          应用预设时，Chrome 会显示调试提示条。
         </p>
 
         {simulatingPreset ? (
           <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#b7d6ff] bg-[#e8f2ff] px-3 py-2.5">
-            <span className="min-w-0 flex-1 text-xs leading-5 text-[#005bd1]">
-              正在模拟「{simulatingPreset.name}」
-            </span>
+            <span className="min-w-0 flex-1 text-xs leading-5 text-[#005bd1]">正在模拟「{simulatingPreset.name}」</span>
             <button
               className="shrink-0 rounded-lg border border-[#0c5fb8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0c5fb8] transition-colors hover:bg-[#d7e9ff]"
               type="button"
@@ -388,10 +357,9 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
 
       {formOpen ? (
         <section className="rounded-[14px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(16,24,40,0.12)]">
-          <form
-            aria-label="预设表单"
-            onSubmit={handleSubmit(() => void save())}>
-            <h2 className="text-sm font-semibold text-slate-950">{editingId ? "编辑预设" : "新建预设"}</h2>
+          <form aria-label="预设表单" onSubmit={handleSubmit(() => void save())}>
+            <h2 className="text-sm font-semibold text-slate-950">{editingId ? "编辑预设" : "自定义预设"}</h2>
+            <p className="mt-1 text-xs text-slate-500">来源设备：{formDevice?.name}</p>
 
             <div className="mt-3 space-y-3">
               <label className="block">
@@ -425,43 +393,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                   }}
                 />
               </label>
-
-              <label className="block">
-                <span className="text-xs font-medium text-slate-600">User-Agent</span>
-                <Controller
-                  name="userAgent"
-                  control={control}
-                  render={({ field }) => (
-                    <select
-                      ref={field.ref}
-                      className={fieldClass}
-                      value={field.value}
-                      onChange={(event) => field.onChange((event.target as HTMLSelectElement).value as UserAgentType)}
-                      onBlur={field.onBlur}>
-                      {USER_AGENT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.value === "default" ? "不覆盖（保留真实身份）" : option.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                />
-              </label>
-
-              <div>
-                <span className="text-xs font-medium text-slate-600">设备档位</span>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {DEVICE_PRESETS.map((preset) => (
-                    <button
-                      key={preset.label}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-[#9bc8ff] hover:bg-[#e8f2ff] hover:text-[#005bd1]"
-                      type="button"
-                      onClick={() => selectDevicePreset(preset)}>
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <label className="block">
@@ -546,23 +477,35 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                 </label>
               </div>
 
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900">
-                <Controller
-                  name="mobile"
-                  control={control}
-                  render={({ field }) => (
-                    <input
-                      ref={field.ref}
-                      className="size-4 accent-[#0c5fb8]"
-                      type="checkbox"
-                      checked={field.value}
-                      onChange={(event) => field.onChange((event.target as HTMLInputElement).checked)}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-                移动端布局
-              </label>
+              {formDevice?.mobile && (
+                <fieldset>
+                  <legend className="text-xs font-medium text-slate-600">触摸方式</legend>
+                  <Controller
+                    name="touchMode"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="mt-1 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 p-1">
+                        {(["mouse", "touch"] as const).map((mode) => (
+                          <label key={mode} className="cursor-pointer text-center text-sm">
+                            <input
+                              className="peer sr-only"
+                              type="radio"
+                              name={field.name}
+                              value={mode}
+                              checked={field.value === mode}
+                              onChange={() => field.onChange(mode)}
+                              onBlur={field.onBlur}
+                            />
+                            <span className="block rounded-md px-3 py-1.5 peer-checked:bg-[#e8f2ff] peer-checked:text-[#005bd1] peer-focus-visible:ring-2 peer-focus-visible:ring-[#0077ff]">
+                              {mode}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  />
+                </fieldset>
+              )}
             </div>
 
             <div className="mt-4 flex gap-3">
@@ -585,16 +528,11 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
         <section className="rounded-[14px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(16,24,40,0.12)]">
           {loading ? (
             <p className="text-sm text-slate-500">正在读取预设…</p>
-          ) : presets.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center">
-              <p className="text-sm font-semibold text-slate-900">尚未创建浏览器预设</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                创建后可对单个标签页应用，把 User-Agent 与 viewport 一起切换成目标设备。
-              </p>
-            </div>
           ) : (
             <ul className="space-y-2">
               {presets.map((preset) => {
+                const builtin = preset.id === preset.deviceId
+                const device = getDevicePreset(preset.deviceId)
                 // 使用中即锁定：数量来自后台，页面不自行判断。
                 const inUse = (usage[preset.id] ?? 0) > 0
                 // 窄屏（Popup）下按钮会挤扁信息列，因此信息与操作分行；宽屏（Options）保持单行。
@@ -605,11 +543,9 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-slate-950">{preset.name}</span>
                       <span className="mt-0.5 block text-xs text-slate-500">
-                        {preset.userAgent === "default"
-                          ? "不覆盖 UA"
-                          : USER_AGENT_OPTIONS.find((option) => option.value === preset.userAgent)?.label}{" "}
-                        · {preset.viewport.width}×{preset.viewport.height} @{preset.viewport.deviceScaleFactor}x ·{" "}
-                        {preset.viewport.mobile ? "移动端" : "桌面端"}
+                        {builtin ? "内置" : device?.name} · {preset.viewport.width}×{preset.viewport.height} @
+                        {preset.viewport.deviceScaleFactor}x ·{" "}
+                        {device?.mobile ? `移动端 · ${preset.touchMode}` : "桌面端"}
                       </span>
                       {inUse && (
                         <span className="mt-0.5 block text-xs font-medium text-[#0c5fb8]">
@@ -623,7 +559,7 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                         type="button"
                         aria-label={`应用 ${preset.name}`}
                         title={tabReason || undefined}
-                        disabled={!!tabReason || applyingId === preset.id}
+                        disabled={!!tabReason || !!applyingId}
                         onClick={() => void applyPreset(preset)}>
                         {applyingId === preset.id ? "应用中" : "应用"}
                       </button>
@@ -640,24 +576,26 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
                       <button
                         className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                         type="button"
-                        aria-label={`编辑 ${preset.name}`}
-                        title={inUse ? "正在被使用的预设不能编辑，请先停止" : undefined}
-                        disabled={inUse}
-                        onClick={() => openEdit(preset)}>
-                        编辑
+                        aria-label={`${builtin ? "自定义" : "编辑"} ${preset.name}`}
+                        title={!builtin && inUse ? "正在被使用的预设不能编辑，请先停止" : undefined}
+                        disabled={!builtin && inUse}
+                        onClick={() => (builtin ? openCreate(preset) : openEdit(preset))}>
+                        {builtin ? "自定义" : "编辑"}
                       </button>
-                      <button
-                        className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        type="button"
-                        aria-label={`删除 ${preset.name}`}
-                        title={inUse ? "正在被使用的预设不能删除，请先停止" : undefined}
-                        disabled={inUse}
-                        onClick={(event) => {
-                          deleteTriggerRef.current = event.currentTarget as HTMLElement
-                          setPendingDelete(preset)
-                        }}>
-                        删除
-                      </button>
+                      {!builtin && (
+                        <button
+                          className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          type="button"
+                          aria-label={`删除 ${preset.name}`}
+                          title={inUse ? "正在被使用的预设不能删除，请先停止" : undefined}
+                          disabled={inUse}
+                          onClick={(event) => {
+                            deleteTriggerRef.current = event.currentTarget as HTMLElement
+                            setPendingDelete(preset)
+                          }}>
+                          删除
+                        </button>
+                      )}
                     </div>
                   </li>
                 )
@@ -666,53 +604,6 @@ export default function BrowserPresets({ layout }: BrowserPresetsProps) {
           )}
         </section>
       )}
-
-      <Dialog
-        open={!!conflict}
-        titleId="preset-conflict-title"
-        onClose={cancelConflict}
-        panelClassName="max-w-[335px] rounded-[14px] p-4 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
-        <h2 id="preset-conflict-title" className="text-base font-semibold leading-5 text-slate-950">
-          确认保存冲突的移动端判定
-        </h2>
-        <p className="mt-2 text-sm leading-5 text-slate-600">
-          UA 身份与视图开关对移动端的判定不一致，保存后站点可以据此判定为伪装。
-        </p>
-        <dl className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5">
-          <div className="flex gap-2">
-            <dt className="shrink-0 font-medium text-slate-500">sec-ch-ua-mobile</dt>
-            <dd className="min-w-0 text-slate-900">{conflict?.secChUaMobile}</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="shrink-0 font-medium text-slate-500">布局</dt>
-            <dd className="min-w-0 text-slate-900">
-              按{conflict?.layout === "mobile" ? "移动端" : "桌面端"}处理
-            </dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="shrink-0 font-medium text-slate-500">风险</dt>
-            <dd className="min-w-0 text-slate-900">
-              UA 身份声明{conflict?.userAgentMobile ? "移动端" : "桌面端"}，视图开关却是
-              {conflict?.viewportMobile ? "移动端" : "桌面端"}，两者不一致会让站点识别出指纹割裂，可能被判为伪装或返回不一致的资源。
-            </dd>
-          </div>
-        </dl>
-        <div className="mt-4 flex gap-3">
-          <button
-            className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition-all hover:bg-slate-50 active:bg-slate-100"
-            type="button"
-            onClick={cancelConflict}>
-            取消
-          </button>
-          <button
-            className="flex-1 rounded-xl bg-[#b42318] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#912018] active:bg-[#7a1a13] disabled:opacity-60"
-            type="button"
-            disabled={saving}
-            onClick={() => void save(true)}>
-            确认风险
-          </button>
-        </div>
-      </Dialog>
 
       <Dialog
         open={!!pendingGroupMove}
