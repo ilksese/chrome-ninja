@@ -40,7 +40,7 @@
 ## Cookie Editor
 
 - `src/cookie-editor/background.ts` owns the `cookie-editor` message commands, Cookie observation, and persisted disable rules. Read the Cookie editor section in `README.md` for removal attribution and recovery boundaries.
-- The Popup component only opens the editor. `src/cookie-editor/content.ts` is injected with a CRXJS `?script` loader and acknowledges mounting; `panel.ts` owns webpage drafts and subscriptions.
+- The Popup and webpage context menu share the background's editor-open flow. `src/cookie-editor/content.ts` is injected into the top frame with a CRXJS `?script` loader and acknowledges mounting; `panel.ts` owns webpage drafts and subscriptions.
 - Scope comes from the sender tab (top frame), its Cookie store, and `chrome.cookies.getPartitionKey`. Identity includes name, Domain, Path, store, and both partition key fields. Expired writes remove an exact identity; URL/name removal is insufficient.
 - Tests exercise messages/events in `tests/cookie-editor-background.test.ts`, webpage behavior in `tests/cookie-editor-panel.test.ts`, and the Popup entry in `tests/cookie-editor-entry.test.tsx`.
 

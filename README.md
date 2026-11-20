@@ -52,7 +52,7 @@ pnpm --filter @chrome-ninja/web build
 
 Vitest 覆盖共享包、扩展后台、网页内界面和介绍站点；扩展相关测试可运行 `pnpm test --project extension --project extension-ui`。提交前运行相关测试、`lint`、`typecheck` 和按包 `build`。
 
-Cookie 编辑器由扩展弹窗入口打开当前网页中的可拖动、可调整大小面板，支持查询、新增、显式保存修改和持续禁用。禁用规则持久保存在后台；取消禁用恢复最后可观测且仍有效的版本。能力与平台边界见 [扩展说明](apps/extension/README.md#cookie-编辑器)。
+Cookie 编辑器可从扩展弹窗或网页右键菜单「chrome ninja → Cookie Editor」打开，在当前网页中查询、新增、显式保存修改和持续禁用 Cookie。禁用规则持久保存在后台；取消禁用恢复最后可观测且仍有效的版本。能力与平台边界见 [扩展说明](apps/extension/README.md#cookie-编辑器)。
 
 ## 分层文档
 

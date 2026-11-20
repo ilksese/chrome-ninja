@@ -14,12 +14,12 @@ import { registerCookieEditorBackground } from "@/cookie-editor/background"
 import { registerBrowserPresetBackground } from "@/browser-preset/background"
 
 ninjaLog("background runing")
-registerCookieEditorBackground()
+const openCookieEditor = registerCookieEditorBackground()
 registerBrowserPresetBackground()
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
 registerLoginStateExportBackground()
-registerQrBackground()
+registerQrBackground(openCookieEditor)
 registerTranslateBackground()
 registerVideoSnifferBackground()
 registerNetmonBackground()

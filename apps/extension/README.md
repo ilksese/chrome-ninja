@@ -9,7 +9,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 - `src/background/index.ts`：MV3 background service worker。
 - `src/content-script/index.ts`：通用网页 dev-bridge 连接入口，不包含站点功能逻辑。
 - 元素复制、翻译、视频嗅探、录制和网络监视器的 content script 在 `manifest.config.ts` 中分别注册。
-- `src/cookie-editor/content.ts`：按需注入 Cookie 编辑器的网页内面板，Popup 只提供入口。
+- `src/cookie-editor/content.ts`：按需注入 Cookie 编辑器的网页内面板，扩展弹窗与网页右键菜单共用后台打开流程。
 - `manifest.config.ts`：由 `@crxjs/vite-plugin` 使用的 manifest 配置。
 
 ## 扩展能力
@@ -25,7 +25,7 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 
 ## Cookie 编辑器
 
-在普通 HTTP/HTTPS 网页上，从扩展弹窗点击「Cookie 编辑器」后，弹窗关闭，网页中央打开面板，初始尺寸为 720 × 800 px，小视口下自动缩小并保留边距。重复打开唤起同一个面板；面板无页面遮罩，可拖动标题栏、拖动右下角调整大小，也可关闭。文档内路由切换保留面板，刷新、整页导航或离开文档关闭面板。浏览器内部页、扩展页与 Chrome 网上应用店入口不可用；其他注入限制显示实际错误。
+在普通 HTTP/HTTPS 网页上，从网页右键菜单选择「chrome ninja → Cookie Editor」，或从扩展弹窗点击「Cookie 编辑器」，即可在当前网页中央打开同一个面板。通过弹窗打开成功后，弹窗自动关闭。面板初始尺寸为 720 × 800 px，小视口下自动缩小并保留边距。重复打开唤起同一个面板；面板无页面遮罩，可拖动标题栏、拖动右下角调整大小，也可关闭。文档内路由切换保留面板，刷新、整页导航或离开文档关闭面板。浏览器内部页、扩展页与 Chrome 网上应用店不支持打开面板；其他注入错误在弹窗中显示，从右键菜单打开失败时记录到扩展后台。
 
 面板显示当前主机全部路径上的 Cookie（含适用的父域共享 Cookie），使用当前标签页的 Cookie 存储区，仅包含普通 Cookie 与当前顶层网页完整分区的 Cookie。搜索按名称或值忽略大小写匹配，也包含禁用条目。
 

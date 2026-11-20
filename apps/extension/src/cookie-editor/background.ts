@@ -37,10 +37,14 @@ async function contextFor(message: CookieRequest, sender: chrome.runtime.Message
   const tabId = sender.tab?.id ?? message.tabId
   if (tabId === undefined) throw new Error("无法读取当前标签页")
   if (!sender.tab && !sender.url?.startsWith(chrome.runtime.getURL(""))) throw new Error("请求必须来自扩展页面")
+  return contextForTab(tabId, sender.tab ? sender.url : undefined)
+}
+
+async function contextForTab(tabId: number, frameUrl?: string): Promise<Context> {
   const tab = await chrome.tabs.get(tabId)
   const reason = pageUnavailableReason(tab.url)
   if (reason) throw new Error(reason)
-  if (sender.tab && sender.url && new URL(sender.url).origin !== new URL(tab.url!).origin)
+  if (frameUrl && new URL(frameUrl).origin !== new URL(tab.url!).origin)
     throw new Error("网页已跳转，请重新打开编辑器")
   const stores = await chrome.cookies.getAllCookieStores()
   const store = stores.find((item) => item.tabIds.includes(tabId))
@@ -356,6 +360,23 @@ export function registerCookieEditorBackground() {
     if (!entry || entry.revision !== original.revision) throw new Error("Cookie 已变化，请重新载入最新版本后再保存")
     return entry
   }
+  const openPanel = async (tabId: number) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const opened = new Promise<void>((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("面板未能打开，请刷新网页后重试")), 5000)
+      openings.set(tabId, (notice) => notice.ok ? resolve() : reject(new Error(notice.error ?? "面板打开失败")))
+    })
+    // The CRX loader imports asynchronously, so injection alone does not confirm the panel mounted.
+    try {
+      await Promise.all([
+        opened,
+        chrome.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: [contentScript] })
+      ])
+    } finally {
+      clearTimeout(timer)
+      openings.delete(tabId)
+    }
+  }
   chrome.runtime.onMessage.addListener(
     (incoming: CookieRequest | OpenNotice, sender, respond: (response: CookieResponse) => void) => {
       if (incoming?.target === "cookie-editor-opened") {
@@ -370,26 +391,7 @@ export function registerCookieEditorBackground() {
         const context = await contextFor(message, sender)
         if (message.type === "open") {
           if (sender.tab) throw new Error("请从扩展弹窗打开编辑器")
-          let timer: ReturnType<typeof setTimeout> | undefined
-          const opened = new Promise<void>((resolve, reject) => {
-            timer = setTimeout(() => reject(new Error("面板未能打开，请刷新网页后重试")), 5000)
-            openings.set(context.tabId, (notice) =>
-              notice.ok ? resolve() : reject(new Error(notice.error ?? "面板打开失败"))
-            )
-          })
-          // The CRX loader imports asynchronously, so injection alone does not confirm the panel mounted.
-          try {
-            await Promise.all([
-              opened,
-              chrome.scripting.executeScript({
-                target: { tabId: context.tabId, frameIds: [0] },
-                files: [contentScript]
-              })
-            ])
-          } finally {
-            clearTimeout(timer)
-            openings.delete(context.tabId)
-          }
+          await openPanel(context.tabId)
           return { ok: true }
         }
         if (!subscribers.has(context.tabId)) {
@@ -448,6 +450,11 @@ export function registerCookieEditorBackground() {
       return true
     }
   )
+  return (tabId: number) =>
+    enqueue(async () => {
+      await contextForTab(tabId)
+      await openPanel(tabId)
+    })
 }
 
 const hasControl = (value: string) => [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)

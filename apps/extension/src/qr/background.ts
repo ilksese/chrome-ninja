@@ -8,10 +8,11 @@ import { applyUserAgentRule, getUserAgentOption, USER_AGENT_OPTIONS } from "@/us
 const QR_MENU_PARENT_ID = "chrome-ninja"
 const QR_MENU_GENERATE_ID = "chrome-ninja-generate-qr"
 const NETMON_MENU_TOGGLE_ID = "chrome-ninja-toggle-netmon"
+const COOKIE_EDITOR_MENU_ID = "chrome-ninja-cookie-editor"
 const USER_AGENT_MENU_ID = "chrome-ninja-user-agent"
 const QR_PAGE_PATH = "src/qr/index.html"
 
-export function registerQrBackground() {
+export function registerQrBackground(openCookieEditor: (tabId: number) => Promise<void>) {
   const menusReady = createQrMenus()
   void menusReady.catch((error) => console.error("创建右键菜单失败", error))
 
@@ -26,6 +27,12 @@ export function registerQrBackground() {
 
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (handleElementCopyMenu(info, tab)) return
+    if (info.menuItemId === COOKIE_EDITOR_MENU_ID) {
+      if (tab?.id !== undefined) {
+        void openCookieEditor(tab.id).catch((error) => console.error("右键打开 Cookie Editor 失败", error))
+      }
+      return
+    }
     const userAgent = USER_AGENT_OPTIONS.find((option) => userAgentMenuItemId(option.value) === info.menuItemId)
     if (userAgent) {
       if (!info.wasChecked) {
@@ -80,6 +87,13 @@ async function createQrMenus() {
     id: NETMON_MENU_TOGGLE_ID,
     parentId: QR_MENU_PARENT_ID,
     title: "开启／关闭网络监视器",
+    contexts: ["all"],
+    documentUrlPatterns: ["http://*/*", "https://*/*"]
+  })
+  chrome.contextMenus.create({
+    id: COOKIE_EDITOR_MENU_ID,
+    parentId: QR_MENU_PARENT_ID,
+    title: "Cookie Editor",
     contexts: ["all"],
     documentUrlPatterns: ["http://*/*", "https://*/*"]
   })
