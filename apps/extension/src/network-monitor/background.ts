@@ -150,11 +150,11 @@ function canInject(url?: string): boolean {
   }
 }
 
-function getNetmonScriptFiles(): string | null {
-  const entry = chrome.runtime
+function getNetmonScriptFile(name: string): string | undefined {
+  return chrome.runtime
     .getManifest()
-    .content_scripts?.find(({ js }) => js?.some((file) => file.includes("netmon-content.ts")))
-  return entry?.js?.find((file) => file.includes("netmon-content.ts")) ?? null
+    .content_scripts?.flatMap(({ js }) => js ?? [])
+    .find((file) => file.includes(name))
 }
 
 async function ensureTabNetmon(tabId: number, url: string): Promise<void> {
@@ -163,11 +163,14 @@ async function ensureTabNetmon(tabId: number, url: string): Promise<void> {
     await chrome.tabs.sendMessage(tabId, { target: "netmon-frame", type: "SYNC", enabled: true })
     void broadcastState(tabId)
   } catch {
-    const js = getNetmonScriptFiles()
-    if (!js) return
+    const hook = getNetmonScriptFile("netmon-hook.iife.js")
+    const content = getNetmonScriptFile("netmon-content.ts")
+    if (!hook || !content) return
     injecting.add(tabId)
     try {
-      await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: [js] })
+      const target = { tabId, allFrames: true }
+      await chrome.scripting.executeScript({ target, files: [hook], world: "MAIN" })
+      await chrome.scripting.executeScript({ target, files: [content] })
       await chrome.tabs.sendMessage(tabId, { target: "netmon-frame", type: "SYNC", enabled: true })
       void broadcastState(tabId)
     } finally {
