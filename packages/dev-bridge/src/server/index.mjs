@@ -4,7 +4,7 @@ import http from "node:http"
 import https from "node:https"
 
 const host = process.env.HOST || "127.0.0.1"
-const port = Number(process.env.PORT || 8787)
+const port = readPort(process.argv.slice(2), process.env.PORT || 8787)
 const certPath = process.env.CHROME_NINJA_DEV_BRIDGE_CERT
 const keyPath = process.env.CHROME_NINJA_DEV_BRIDGE_KEY
 const service = "@chrome-ninja/dev-bridge"
@@ -177,6 +177,17 @@ function createServer() {
   }
 
   return http.createServer(handler)
+}
+
+function readPort(args, fallback) {
+  const index = args.indexOf("--port")
+  const raw = index === -1 ? fallback : args[index + 1]
+  const port = Number(raw)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`Invalid port: ${raw || "(missing)"}`)
+    process.exit(1)
+  }
+  return port
 }
 
 async function handleExecute(request, response) {

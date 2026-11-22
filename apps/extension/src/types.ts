@@ -6,6 +6,10 @@ export type RecorderOptionsType = {
   enabled: boolean
 }
 
+export type PageControlOptionsType = {
+  enabled: boolean
+}
+
 export type VideoSnifferOptionsType = {
   enabled: boolean
 }
@@ -23,6 +27,7 @@ export type UserAgentType = "default" | "chrome-desktop" | "chrome-android" | "s
 export type Options = {
   boss: BossSettingType
   recorder: RecorderOptionsType
+  pageControl: PageControlOptionsType
   videoSniffer: VideoSnifferOptionsType
   translate: TranslateOptionsType
   userAgent: UserAgentType

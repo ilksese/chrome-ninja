@@ -1,5 +1,5 @@
-import { atom } from "jotai"
 import type { Options } from "@/types"
+import { atom } from "jotai"
 
 export const DEFAULT_OPTIONS: Options = {
   userAgent: "default",
@@ -8,6 +8,9 @@ export const DEFAULT_OPTIONS: Options = {
     enabled: false
   },
   recorder: {
+    enabled: false
+  },
+  pageControl: {
     enabled: false
   },
   videoSniffer: {
@@ -34,6 +37,10 @@ export function mergeOptions(options?: Partial<Options>): Options {
     recorder: {
       ...DEFAULT_OPTIONS.recorder,
       ...options?.recorder
+    },
+    pageControl: {
+      ...DEFAULT_OPTIONS.pageControl,
+      ...options?.pageControl
     },
     videoSniffer: {
       ...DEFAULT_OPTIONS.videoSniffer,

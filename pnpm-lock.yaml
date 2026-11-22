@@ -193,6 +193,8 @@ importers:
 
   packages/dev-bridge: {}
 
+  packages/page-control: {}
+
   packages/utils:
     dependencies:
       clsx:

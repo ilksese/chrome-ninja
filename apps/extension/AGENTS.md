@@ -7,9 +7,10 @@
 - Background service worker entry is `src/background/index.ts`.
 - Content scripts for element copying, translation, video sniffing, recording, and network monitoring are registered separately in `manifest.config.ts`.
 - `src/content-script/index.ts` connects the top-level page to `@chrome-ninja/dev-bridge/client`; keep it independent of feature handlers.
-- `pnpm dev` watches extension builds and reloads affected contexts through dev-bridge. The background uses `DEV_BRIDGE_ENABLED` to set the toolbar badge to `dev` independently of the bridge connection, and clears the badge in production builds. Development backgrounds open the toolbar popup on first connection and after client/tab reloads; production builds do not enable this behavior.
+- `pnpm dev` watches extension builds and reloads affected contexts through dev-bridge. Pass `--port` when `8787` is occupied; the same port is passed to the extension build as `VITE_CHROME_NINJA_DEV_BRIDGE_PORT`. The background uses `DEV_BRIDGE_ENABLED` to set the toolbar badge to `dev` independently of the bridge connection, and clears the badge in production builds. Development backgrounds open the toolbar popup on first connection and after client/tab reloads; production builds do not enable this behavior.
 - Development bridge builds disable Rollup cache so CRXJS regenerates manifest and dynamic content-script references on every rebuild. Validate at least two consecutive rebuilds when changing the development build flow.
 - Home page feature entry points form an edge-to-edge, sortable list. Cookie editor opens its webpage panel; other detailed editing workflows use modal dialogs.
+- Page control is a home-list switch, not a dev-bridge command. Read `../../docs/adr/0004-page-control-without-cdp.md` before changing its boundary. `src/page-control/background.ts` connects to the local service only while the switch is on and runs `scroll`, `click`, `snapshot`, `navigation`, or `tab-list` on the last focused window. `tab-list` returns `title`, `tabId`, `url`, and `active` for every tab in that window and does not inject into pages. Do not attach `chrome.debugger` or create a tab group for it.
 
 ## MV3 Gotchas
 

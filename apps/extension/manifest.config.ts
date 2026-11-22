@@ -133,8 +133,8 @@ export default {
     extension_pages: "script-src 'self'; object-src 'self'; connect-src 'self' http: https: ws: wss:"
   },
   offline_enabled: true,
-  host_permissions: ["<all_urls>"],
-  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite", "debugger", "tabGroups"],
+  host_permissions: ["<all_urls>", "http://127.0.0.1/*"],
+  permissions: ["alarms", "contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite", "debugger", "tabGroups"],
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],

@@ -22,8 +22,31 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 - 切换浏览器身份：从扩展弹窗或网页右键菜单「chrome ninja → Switch User-Agent」选择全局 UA；「默认」移除覆盖。此功能只改写 HTTP(S) 请求的 `User-Agent` 头，不改 `navigator.userAgent`、Client Hints 或视口，也不启动 CDP。右键菜单沿用弹窗的「切换后立即刷新当前页面」设置，只刷新点击菜单所在的标签页。
 - Cookie 编辑器：在网页中查询、新增、修改与持续禁用当前主机的 Cookie。
 - 浏览器预设：对单个标签页应用内置或自定义设备，模拟 UA、视口和输入方式。
+- 页面控制：首页功能列表中的开关。开启后扩展连接本地页面控制服务，调用方用 HTTP 操作最后聚焦窗口的活动标签页，或列出该窗口的标签页。
 - 网页内面板（Cookie 编辑器、网络监视器、步骤记录器）可拖动标题栏、拖动右下角调整大小；仅标题栏拖动改变位置或原生缩放改变尺寸后保存布局，普通点击期间的内容增高不保存。各面板使用独立的 `chrome.storage.local` 键 `contentUiPanelLayouts.<panel-key>`，所有站点与标签页共用。恢复与拖动统一保留 8 px 视口边距，拖动的每次移动按面板当前实际尺寸计算边界，各自最小尺寸在小视口下缩小。Cookie 编辑器首次打开的默认布局同样经过边界夹取。
 - 默认配置在 `src/store/options.ts`，类型在 `src/types.ts`。
+
+## 页面控制
+
+首页功能列表中的「页面控制」默认关闭，扩展弹窗和选项页都显示这一行，状态写入 Options。关闭时扩展断开服务并拒绝操作。列表不显示连接状态。
+
+这项能力独立于调试桥，不使用 CDP，也不建立标签页分组。先启动服务：
+
+```bash
+pnpm --filter @chrome-ninja/page-control dev
+```
+
+服务监听 `127.0.0.1:8788`。打开开关后，扩展主动连接。`POST /page-control` 接收操作数组，按顺序执行，失败即停止。`scroll` 只滚动最后聚焦窗口活动标签页的顶层文档。`click` 点击该页第一个匹配元素，必须只提供 `selector` 或 `xpath` 其中一个。`snapshot` 返回该顶层文档的无障碍结构，包含角色、名称、状态，以及接近 Playwright aria snapshot 的 `text`。`navigation` 打开 `http` 或 `https` 地址；`newPage` 为 `false` 时替换活动标签页，为 `true` 时在同一窗口新开标签页。`tab-list` 不接收参数，按从左到右返回该窗口全部标签页的 `title`、`tabId`、`url` 和 `active`；它只列出标签页，不操作页面，因此也包含受限页面。
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8788/page-control -H "content-type: application/json" --data-raw '[{"action":"navigation","url":"https://example.com","newPage":true}]'
+```
+
+正数向右、向下，每个 `scroll` 滚一次。URL scheme 以 `chrome` 开头的受限页面不能滚动、点击或生成快照，也不会改用其他标签页。网上应用店和无痕窗口中的普通网页可以滚动。一次 `tab-list` 的结果在 `tabs`，同一请求里多次列出时改为 `tabLists`。服务没连上时，请求立刻失败。列出最后聚焦窗口：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8788/page-control -H "content-type: application/json" --data-raw '[{"action":"tab-list"}]'
+```
 
 ## Cookie 编辑器
 
@@ -94,7 +117,7 @@ pnpm --filter @chrome-ninja/extension build
 
 ## 开发自动刷新
 
-`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；之后构建完成会自动刷新相关界面或整个扩展。开发版的工具栏图标显示 `dev` 徽章，不依赖开发桥是否连接；普通 `pnpm build` 的产物不显示徽章。
+`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。默认端口 `8787` 被占用时，用 `pnpm dev -- --port 8797` 换端口；构建会带上同一个 `VITE_CHROME_NINJA_DEV_BRIDGE_PORT`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；换端口后重新加载扩展。之后构建完成会自动刷新相关界面或整个扩展。开发版的工具栏图标显示 `dev` 徽章，不依赖开发桥是否连接；普通 `pnpm build` 的产物不显示徽章。
 
 构建使用 CRXJS 2.7.1。开发模式关闭 Rollup 构建缓存，让每轮构建重新生成 Manifest 和动态 Content Script 的文件引用，避免增量构建沿用失效引用而中断刷新；生产构建保留默认缓存设置。
 

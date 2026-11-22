@@ -157,6 +157,7 @@ const Home = ({ layout }: HomeProps) => {
   const [isApplying, setIsApplying] = useState(false)
   const [isBossApplying, setIsBossApplying] = useState(false)
   const [isRecorderApplying, setIsRecorderApplying] = useState(false)
+  const [isPageControlApplying, setIsPageControlApplying] = useState(false)
   const [error, setError] = useState("")
   const [simulatingPreset, setSimulatingPreset] = useState<{ id: string; name: string } | undefined>(undefined)
   const [isSimulationExiting, setIsSimulationExiting] = useState(false)
@@ -440,6 +441,18 @@ const Home = ({ layout }: HomeProps) => {
     }
   }
 
+  const togglePageControl = async () => {
+    setIsPageControlApplying(true)
+    setError("")
+    try {
+      await setOptions({ ...options, pageControl: { ...options.pageControl, enabled: !options.pageControl.enabled } })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "页面控制开关保存失败")
+    } finally {
+      setIsPageControlApplying(false)
+    }
+  }
+
   return (
     <div className="Home relative">
       <section className="bg-white">
@@ -558,6 +571,47 @@ const Home = ({ layout }: HomeProps) => {
                       className={cn(
                         "absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform",
                         options.recorder.enabled ? "translate-x-5" : "translate-x-0.5"
+                      )}
+                    />
+                  </span>
+                </button>
+              )
+            },
+            {
+              id: "page-control",
+              label: "页面控制",
+              content: (
+                <button
+                  className={FEATURE_BUTTON_CLASS}
+                  type="button"
+                  role="switch"
+                  aria-label="页面控制总开关"
+                  aria-checked={options.pageControl.enabled}
+                  disabled={isPageControlApplying}
+                  onClick={togglePageControl}>
+                  <span
+                    className={cn(
+                      "grid size-10 place-items-center rounded-xl text-[11px] font-semibold shadow-sm",
+                      options.pageControl.enabled ? "bg-[#005bd1] text-white" : "bg-slate-100 text-slate-500"
+                    )}>
+                    {options.pageControl.enabled ? "ON" : "OFF"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-950">页面控制</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {options.pageControl.enabled ? "已启用" : "默认关闭"}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "relative h-6 w-11 rounded-full transition-colors",
+                      options.pageControl.enabled ? "bg-[#005bd1]" : "bg-slate-300"
+                    )}
+                    aria-hidden="true">
+                    <span
+                      className={cn(
+                        "absolute top-0.5 block size-5 rounded-full bg-white shadow transition-transform",
+                        options.pageControl.enabled ? "translate-x-5" : "translate-x-0.5"
                       )}
                     />
                   </span>

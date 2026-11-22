@@ -12,7 +12,7 @@
 
 ## Commands
 
-- Start the service with `pnpm --filter @chrome-ninja/dev-bridge dev`.
+- Start the service with `pnpm --filter @chrome-ninja/dev-bridge dev`. Pass `-- --port <port>` or `PORT` when the default port is occupied.
 - There is no package-local lint, typecheck, or test script at the moment.
 - Use `node --check packages/dev-bridge/src/server/index.mjs` from the repo root for a basic syntax check after editing the service.
 - Extension-side protocol changes should be checked with `pnpm --filter @chrome-ninja/extension lint`.

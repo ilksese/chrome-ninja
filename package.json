@@ -7,7 +7,7 @@
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "dev": "pnpm --filter @chrome-ninja/extension dev",
+    "dev": "node apps/extension/scripts/dev.mjs",
     "build": "pnpm --filter @chrome-ninja/extension build",
     "preview": "pnpm --filter @chrome-ninja/extension preview",
     "lint": "eslint .",
