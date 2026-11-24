@@ -9,6 +9,7 @@ export type PageSnapshot = {
 type SnapshotNode = {
   role: string
   name?: string
+  ref?: string
   url?: string
   value?: string
   level?: number
@@ -22,7 +23,28 @@ type SnapshotNode = {
 export function snapshotPage(): PageSnapshot {
   const maxNodes = 250
   let count = 0
+  let refCount = 0
   let truncated = false
+  const operableRoles = new Set([
+    "link",
+    "button",
+    "textbox",
+    "searchbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "option",
+    "tab",
+    "switch",
+    "slider",
+    "spinbutton",
+    "treeitem"
+  ])
+
+  document.querySelectorAll("[data-chrome-ninja-ref]").forEach((element) => element.removeAttribute("data-chrome-ninja-ref"))
 
   const clip = (value: string) => {
     const text = value.replace(/\s+/g, " ").trim()
@@ -67,7 +89,15 @@ export function snapshotPage(): PageSnapshot {
       if (type === "search") return "searchbox"
       return "textbox"
     }
+    if (isEditable(element)) return "textbox"
     return ""
+  }
+
+  const isEditable = (element: Element): element is HTMLElement => {
+    if (!(element instanceof HTMLElement) || element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) return false
+    if (element.isContentEditable) return true
+    const value = element.getAttribute("contenteditable")
+    return value === "" || value === "true" || value === "plaintext-only"
   }
 
   const nameOf = (element: Element, role: string) => {
@@ -85,6 +115,7 @@ export function snapshotPage(): PageSnapshot {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
       return clip(element.labels?.[0]?.textContent || element.getAttribute("placeholder") || element.getAttribute("title") || "")
     }
+    if (isEditable(element)) return clip(element.innerText || element.textContent || "")
     if (role === "link" || role === "button" || role === "heading" || role === "listitem") return clip(element.textContent || "")
     return ""
   }
@@ -118,15 +149,26 @@ export function snapshotPage(): PageSnapshot {
     }
     if (hidden(element)) return []
     const role = roleOf(element)
-    const children: SnapshotNode[] = []
-    for (const child of element.children) children.push(...walk(child))
-    if (!role) return children
+    if (!role) {
+      const hoisted: SnapshotNode[] = []
+      for (const child of element.children) hoisted.push(...walk(child))
+      return hoisted
+    }
     count += 1
     const node: SnapshotNode = { role, ...statesOf(element, role) }
     const name = nameOf(element, role)
     if (name) node.name = name
     if (role === "link" && element instanceof HTMLAnchorElement && element.href) node.url = element.href
-    if (children.length && role !== "link" && role !== "button") node.children = children
+    if (operableRoles.has(role)) {
+      refCount += 1
+      node.ref = `e${refCount}`
+      element.setAttribute("data-chrome-ninja-ref", node.ref)
+    }
+    if (role !== "link" && role !== "button") {
+      const children: SnapshotNode[] = []
+      for (const child of element.children) children.push(...walk(child))
+      if (children.length) node.children = children
+    }
     return [node]
   }
 
@@ -143,8 +185,10 @@ export function snapshotPage(): PageSnapshot {
         ].filter(Boolean)
         const name = node.name ? ` "${node.name.replace(/"/g, '\\"')}"` : ""
         const value = node.value ? ` =${JSON.stringify(node.value)}` : ""
-        const flag = flags.length ? ` [${flags.join(" ")}]` : ""
-        const line = `${"  ".repeat(indent)}- ${node.role}${name}${value}${flag}`
+        const ref = node.ref ? `ref=${node.ref}` : ""
+        const flag = [ref, ...flags].filter(Boolean)
+        const flagText = flag.length ? ` [${flag.join(" ")}]` : ""
+        const line = `${"  ".repeat(indent)}- ${node.role}${name}${value}${flagText}`
         const url = node.url ? `\n${"  ".repeat(indent + 1)}- /url: ${node.url}` : ""
         const children = node.children?.length ? `\n${render(node.children, indent + 1)}` : ""
         return line + url + children

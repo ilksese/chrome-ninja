@@ -70,6 +70,8 @@ export function startPageControlServer({ host = "127.0.0.1", port = 8788 } = {})
 
     const snapshots = []
     const tabLists = []
+    const screenshots = []
+    const openedTabIds = []
     for (const [index, action] of parsed.actions.entries()) {
       const result = await requestAction(extensionClient, action)
       if (!result.ok) {
@@ -78,12 +80,18 @@ export function startPageControlServer({ host = "127.0.0.1", port = 8788 } = {})
       }
       if (result.snapshot) snapshots.push(result.snapshot)
       if (result.tabs) tabLists.push(result.tabs)
+      if (result.screenshot) screenshots.push(result.screenshot)
+      if (typeof result.tabId === "number") openedTabIds.push(result.tabId)
     }
     const body = { ok: true }
     if (snapshots.length === 1) body.snapshot = snapshots[0]
     if (snapshots.length > 1) body.snapshots = snapshots
     if (tabLists.length === 1) body.tabs = tabLists[0]
     if (tabLists.length > 1) body.tabLists = tabLists
+    if (screenshots.length === 1) body.screenshot = screenshots[0]
+    if (screenshots.length > 1) body.screenshots = screenshots
+    if (openedTabIds.length === 1) body.tabId = openedTabIds[0]
+    if (openedTabIds.length > 1) body.tabIds = openedTabIds
     sendJson(response, 200, body)
   }
 
@@ -197,7 +205,9 @@ export function startPageControlServer({ host = "127.0.0.1", port = 8788 } = {})
       ok: message.ok === true,
       error: message.ok === true ? undefined : typeof message.error === "string" ? message.error : "页面操作失败",
       snapshot: message.snapshot,
-      tabs: Array.isArray(message.tabs) ? message.tabs : undefined
+      tabs: Array.isArray(message.tabs) ? message.tabs : undefined,
+      screenshot: typeof message.screenshot === "string" ? message.screenshot : undefined,
+      tabId: typeof message.tabId === "number" ? message.tabId : undefined
     })
   }
 
