@@ -5,7 +5,7 @@
 ## 包职责
 
 - `@chrome-ninja/utils`：导出 `cn`、`ninjaLog` 等小工具。
-- `@chrome-ninja/dev-bridge`：本地开发重载与调试桥，供扩展在开发期连接并自动打开 Popup。
+- `@chrome-ninja/dev-bridge`：本地开发重载与调试桥，供扩展在开发期连接，并在需要时由后台打开 Popup。
 - `@chrome-ninja/page-control`：本地页面控制服务。扩展开启后主动连接，服务按顺序转发操作数组。
 
 ## 改动规则

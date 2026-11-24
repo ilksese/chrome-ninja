@@ -15,6 +15,8 @@ import {
   type DevBridgeExecuteJsResultMessage,
   type DevBridgeHealthResponse,
   type DevBridgeJsonValue,
+  type DevBridgeOpenPopupMessage,
+  type DevBridgeOpenPopupResultMessage,
   type DevBridgeReloadClientMessage,
   type DevBridgeReloadTabsMessage,
   type DevBridgeServerMessage
@@ -50,7 +52,9 @@ let connecting = false
 let socket: WebSocket | undefined
 let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | undefined
 let heartbeatTimer: ReturnType<typeof globalThis.setInterval> | undefined
-let hasConnected = false
+let openingPopup: Promise<void> | undefined
+
+const POPUP_CLIENT_TIMEOUT_MS = 5000
 
 export function connectDevBridgeBackground() {
   if (!DEV_BRIDGE_ENABLED || started) return
@@ -75,10 +79,6 @@ async function connectSocket() {
     socket.addEventListener("open", () => {
       sendSocketMessage({ type: "dev-bridge:hello", scope: "background", clients: getClientCounts() })
       startHeartbeat()
-      if (!hasConnected) {
-        hasConnected = true
-        void openPopup()
-      }
     })
     socket.addEventListener("message", (event) => {
       void handleSocketMessage(event.data)
@@ -130,11 +130,12 @@ async function handleSocketMessage(data: unknown) {
       break
     case "dev-bridge:reload-client":
       reloadClients(message)
-      await openPopup()
       break
     case "dev-bridge:reload-tabs":
       await reloadTabs(message)
-      await openPopup()
+      break
+    case "dev-bridge:open-popup":
+      await handleOpenPopupMessage(message)
       break
     case "dev-bridge:execute-js":
       await handleExecuteMessage(message)
@@ -145,15 +146,81 @@ async function handleSocketMessage(data: unknown) {
   }
 }
 
-async function openPopup() {
+async function handleOpenPopupMessage(message: DevBridgeOpenPopupMessage) {
+  const alreadyOpen = clientPorts.popup.size > 0
   try {
-    const browserWindow = await chrome.windows.getLastFocused({ windowTypes: ["normal"] })
-    if (browserWindow.id === undefined) throw new Error("No normal Chrome window available")
-    if (!browserWindow.focused) await chrome.windows.update(browserWindow.id, { focused: true })
+    if (!alreadyOpen) await ensurePopupOpen()
+    sendOpenPopupResult({ requestId: message.requestId, ok: true, alreadyOpen })
+  } catch (error) {
+    sendOpenPopupResult({ requestId: message.requestId, ok: false, error: getDevBridgeErrorMessage(error) })
+  }
+}
+
+function sendOpenPopupResult(message: Omit<DevBridgeOpenPopupResultMessage, "type">) {
+  sendSocketMessage({ type: "dev-bridge:open-popup:result", ...message })
+}
+
+async function ensurePopupOpen() {
+  if (clientPorts.popup.size > 0) return
+  if (!openingPopup) {
+    openingPopup = openAndWaitForPopupClient().finally(() => {
+      openingPopup = undefined
+    })
+  }
+  await openingPopup
+}
+
+async function openAndWaitForPopupClient() {
+  // openPopup resolves when the popup window exists, before its script connects back.
+  try {
+    await openPopup()
+  } catch (error) {
+    await waitForPopupClient(300)
+    if (clientPorts.popup.size === 0) throw error
+    return
+  }
+
+  await waitForPopupClient(POPUP_CLIENT_TIMEOUT_MS)
+  if (clientPorts.popup.size === 0) throw new Error("Timed out waiting for popup client")
+}
+
+async function waitForPopupClient(timeoutMs: number) {
+  const startedAt = Date.now()
+  while (clientPorts.popup.size === 0 && Date.now() - startedAt <= timeoutMs) {
+    await delay(50)
+  }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms)
+  })
+}
+
+async function openPopup() {
+  const browserWindow = await chrome.windows.getLastFocused({ windowTypes: ["normal"] })
+  if (browserWindow.id === undefined) throw new Error("No normal Chrome window available")
+  await focusWindow(browserWindow)
+  try {
     await chrome.action.openPopup({ windowId: browserWindow.id })
   } catch (error) {
-    console.warn("Failed to open development popup", error)
+    if (!isInactiveWindowError(error)) throw error
+    await focusWindow(browserWindow)
+    await delay(200)
+    await chrome.action.openPopup({ windowId: browserWindow.id })
   }
+}
+
+async function focusWindow(browserWindow: chrome.windows.Window) {
+  if (browserWindow.id === undefined) throw new Error("No normal Chrome window available")
+  // openPopup rejects unless this window was focused through windows.update, even if focused is already true.
+  const update: chrome.windows.UpdateInfo = { focused: true }
+  if (browserWindow.state === "minimized") update.state = "normal"
+  await chrome.windows.update(browserWindow.id, update)
+}
+
+function isInactiveWindowError(error: unknown) {
+  return getDevBridgeErrorMessage(error).includes("inactive window")
 }
 
 function reloadClients(message: DevBridgeReloadClientMessage) {

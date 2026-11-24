@@ -132,9 +132,10 @@ pnpm --filter @chrome-ninja/extension build
 - Popup、Options 的独立入口变化刷新对应界面，公共页面和组件变化刷新两者。
 - Content Script 和录制器、网络监控、视频嗅探变化刷新匹配的网页；Boss 专用脚本仅刷新匹配的 Boss 页面。
 - 后台、Store、Manifest、资源或未分类变化重载整个扩展。
-- 后台首次连接开发桥时，将最近聚焦的普通 Chrome 窗口切到前台，再打开工具栏 Popup；界面或网页刷新后也自动打开，整扩展重载后由新后台连接时打开。同一后台断线重连不会单独触发打开。
+- 构建完成只刷新相关界面、网页或整个扩展，不自动打开工具栏 Popup。
+- 需要 Popup 时，dev-bridge 的 `POST /open-popup`，或目标为 `popup` 的 `/command`、`/execute`，会让后台打开它。已有 Popup 连接时不再抢焦点。
 
-自动刷新会重置运行时界面状态。Popup 失焦时仍按 Chrome 默认行为关闭，浏览器拒绝打开时在后台控制台记录错误。普通 `pnpm build` 不启用开发连接和自动打开。
+自动刷新会重置运行时界面状态。Popup 失焦时仍按 Chrome 默认行为关闭。普通 `pnpm build` 不启用开发连接，也不会打开 Popup。
 
 ## 本地加载扩展
 

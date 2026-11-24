@@ -30,9 +30,11 @@ Environment variables:
 
 Root `pnpm dev` starts this service alongside the extension's `vite build --watch`, with `VITE_CHROME_NINJA_DEV_BRIDGE=true`. `pnpm dev -- --port 8797` binds this service to that port and sets `VITE_CHROME_NINJA_DEV_BRIDGE_PORT` for the extension build. Load `apps/extension/dist` as an unpacked extension in Chrome once before using automatic reloads. Reload the unpacked extension after changing the port so it discovers the new address.
 
-After each successful build, the development script reloads the affected extension pages, matching web tabs, or the entire extension. These are full reloads; in-memory UI state is not preserved. The background brings the last focused normal Chrome window to the foreground and opens its toolbar popup on its first service connection and after client or tab reloads. A whole-extension reload opens the popup when the new background connects. A transient service reconnect alone does not reopen the popup. Chrome requires the target window to be active, so automatic opening can move focus away from the editor. Chrome closes the popup when it loses focus; automatic opening does not keep it pinned open. If no normal Chrome window exists, opening fails without interrupting reloads.
+After each successful build, the development script reloads the affected extension pages, matching web tabs, or the entire extension. These are full reloads; in-memory UI state is not preserved. Reloads and the background's first service connection do not open the toolbar popup. Chrome closes the popup when it loses focus, so the bridge opens it only when a caller needs it.
 
-Client connections are enabled by Vite development mode or `VITE_CHROME_NINJA_DEV_BRIDGE=true`; ordinary production builds do not connect or open the popup automatically. The development script accepts `CHROME_NINJA_DEV_BRIDGE_RELOAD_URL` to override its reload endpoint. Extension health discovery uses `VITE_CHROME_NINJA_DEV_BRIDGE_PORT`, which defaults to `8787`.
+`POST /open-popup` asks the connected background to open the toolbar popup. `/command` and `/execute` do the same when `target` is `popup` and no popup client is connected. The background focuses the last focused normal Chrome window before calling `openPopup`, because Chrome requires that window to be active. If Chrome is not the front app, the bridge uses `@crowecawcaw/xa11y` to activate its window and retries once. That library covers macOS, Windows, and Linux. On Linux it can activate Chrome on X11 and Sway; other Wayland compositors may refuse focus. If a popup client is already connected, it does not focus or open again. Opening fails when no normal Chrome window exists; that failure does not interrupt reloads. The popup is not kept pinned open.
+
+Client connections are enabled by Vite development mode or `VITE_CHROME_NINJA_DEV_BRIDGE=true`; ordinary production builds do not connect or open the popup. The development script accepts `CHROME_NINJA_DEV_BRIDGE_RELOAD_URL` to override its reload endpoint. Extension health discovery uses `VITE_CHROME_NINJA_DEV_BRIDGE_PORT`, which defaults to `8787`.
 
 ## Health
 
@@ -162,7 +164,15 @@ curl -X POST http://127.0.0.1:8787/command \
   -d '{"target":"popup","command":"dom:query","payload":{"selectors":{"root":"#root","primary":"button"},"include":["count","node","attributes","dataset","visible","rect","box","computedStyle","children","cssPath"],"computedStyle":["display","position","width","height","margin","padding","color","backgroundColor","fontSize","zIndex"],"childrenLimit":10}}'
 ```
 
-The popup must be open while running the command. Check `clients.popup` from `/health` before querying popup DOM.
+If no popup client is connected, this request asks the background to open the toolbar popup before querying it. Opening focuses the last focused normal Chrome window.
+
+## Open Popup
+
+```bash
+curl -X POST http://127.0.0.1:8787/open-popup
+```
+
+Asks the background to open the toolbar popup without running a command. Returns `alreadyOpen: true` when a popup client is already connected. Check `clients.popup` from `/health` to see whether it stayed connected.
 
 ## Legacy Execute API
 

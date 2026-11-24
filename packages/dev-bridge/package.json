@@ -17,5 +17,8 @@
   },
   "files": [
     "src"
-  ]
+  ],
+  "dependencies": {
+    "@crowecawcaw/xa11y": "0.16.1"
+  }
 }
