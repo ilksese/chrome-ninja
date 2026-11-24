@@ -17,13 +17,44 @@ Chrome MV3 扩展本体，提供视频嗅探、网络监视、操作录制和翻
 首页功能入口通栏排列。拖动入口左侧的手柄可调整顺序，聚焦手柄后也可用上、下方向键移动。顺序保存在扩展本地存储中，扩展弹窗和选项页共用。
 
 - 视频嗅探：发现页面视频资源，复制链接或下载。
-- 网络监视器：捕获页面请求，查看请求与响应详情。
+- 网络监视器：查看当前标签页命中 URL 片段的 `fetch` / `XMLHttpRequest` 请求及响应详情。顶层页面和 iframe 都在 `document_start` 安装 Hook，收到开启状态后才采集，不补录此前的请求。捕获到 iframe 请求时，列表按请求所在页面的 URL 分组；展开的分组随请求列表一起滚动。
 - 操作录制和翻译。
 - 切换浏览器身份：从扩展弹窗或网页右键菜单「chrome ninja → Switch User-Agent」选择全局 UA；「默认」移除覆盖。此功能只改写 HTTP(S) 请求的 `User-Agent` 头，不改 `navigator.userAgent`、Client Hints 或视口，也不启动 CDP。右键菜单沿用弹窗的「切换后立即刷新当前页面」设置，只刷新点击菜单所在的标签页。
 - Cookie 编辑器：在网页中查询、新增、修改与持续禁用当前主机的 Cookie。
 - 浏览器预设：对单个标签页应用内置或自定义设备，模拟 UA、视口和输入方式。
+- 页面控制：首页功能列表中的开关。开启后扩展连接本地页面控制服务，调用方用 HTTP 按 `tabId` 操作标签页，或列出最后聚焦窗口的标签页。
 - 网页内面板（Cookie 编辑器、网络监视器、步骤记录器）可拖动标题栏、拖动右下角调整大小；仅标题栏拖动改变位置或原生缩放改变尺寸后保存布局，普通点击期间的内容增高不保存。各面板使用独立的 `chrome.storage.local` 键 `contentUiPanelLayouts.<panel-key>`，所有站点与标签页共用。恢复与拖动统一保留 8 px 视口边距，拖动的每次移动按面板当前实际尺寸计算边界，各自最小尺寸在小视口下缩小。Cookie 编辑器首次打开的默认布局同样经过边界夹取。
 - 默认配置在 `src/store/options.ts`，类型在 `src/types.ts`。
+
+## 页面控制
+
+首页功能列表中的「页面控制」默认关闭，扩展弹窗和选项页都显示这一行，状态写入 Options。关闭时扩展断开服务并拒绝操作。列表不显示连接状态。
+
+这项能力独立于调试桥，不使用 CDP。被操作的标签页，以及 `navigation` 新开的标签页，进入同一个名为 `page-control` 的标签页分组。同名的第二个分组会并入它。先启动服务：
+
+```bash
+pnpm --filter @chrome-ninja/page-control dev
+```
+
+服务监听 `127.0.0.1:8788`。打开开关后，扩展主动连接。`POST /page-control` 接收操作数组，按顺序执行，失败即停止。除 `tab-list` 外，每个操作都必须提供正整数 `tabId`。
+
+`snapshot` 返回顶层文档的无障碍结构，包含角色、名称、状态，以及接近 Playwright aria snapshot 的 `text`。可点击、可填写或可选择的节点带稳定 `ref`（`e1`、`e2`…），写入 `data-chrome-ninja-ref`，并出现在 `text` 的 `[ref=e1]` 里。同一批可操作节点的文档顺序不变时，ref 不变；每次快照都会重写。`click`、`hover`、`fill`、`select` 必须只提供 `selector`、`xpath` 或 `ref` 其中一个。`click` 先把目标滚进视口，再派发 pointer 和 mouse 事件，包含 `click`。`hover` 同样先滚进视口，再派发悬停事件；脚本事件不能置上 CSS `:hover`。`fill` 把字符串 `value` 写入 input、textarea 或 contenteditable，并派发 `input` 和 `change`。`select` 只作用于原生单选 `select`，`value` 和 `label` 只能提供一个。
+
+`scroll` 的 `x`、`y` 必须是有限数字，正数向右、向下，立刻滚动。不提供目标时滚动顶层文档；提供其中一个目标时滚动该元素，若它本身不能滚动则滚动最近的可滚动祖先。`press` 的 `key` 只能是 `Enter`、`Escape` 或 `Tab`，可带 `altKey`、`ctrlKey`、`metaKey`、`shiftKey`；目标可选。非可信按键不会触发浏览器默认动作，Tab 会移动焦点，不带修饰键的 Enter 会在单行输入或按钮上调用 `requestSubmit`。
+
+`wait` 的 `until` 是 `load`、`selector` 或 `text`。`load` 等待指定标签加载完成；若当前已完成，最多再等 200 毫秒看导航是否开始，没有就开始视为已完成。`selector` 和 `text` 等待该标签的顶层文档。`timeout` 可选，默认 5000，最大 7000 毫秒，给服务端 8 秒时限留出返回时间。`navigation` 打开 `http` 或 `https` 地址；`newPage` 为 `false` 时替换 `tabId` 对应的标签页，为 `true` 时在该标签页所在窗口新开标签页，把新标签记为它的子标签，并在结果里返回新 `tabId`，不等待加载。同一请求打开多个标签时，结果改为 `tabIds`。关闭页面控制会清空全部父子记录；关闭一个标签会清空以它为根的记录。`activate` 聚焦 `tabId` 所在窗口并激活该标签。`history` 的 `direction` 是 `back`、`forward` 或 `reload`，只操作指定标签，不等待加载。`reload` 使用标签页 API。`back` 和 `forward` 在页面里调用 `history.back()` 和 `history.forward()`；`history.length` 为 1 时 `back` 失败，`forward` 不判断是否真有下一条。`screenshot` 必须提供 `tabId`。`captureVisibleTab` 只能截窗口里当前可见的标签，所以后台标签会先被激活再截图，随后恢复原来的活动标签，不抢窗口焦点，也不使用 debugger。返回 quality 60 的 jpeg data URL。一次截图在 `screenshot`，同一请求多次截图时为 `screenshots`。
+
+`tab-list` 不接收参数，也不能带 `tabId`。它按从左到右返回最后聚焦窗口全部标签页的 `title`、`tabId`、`url` 和 `active`。它只列出标签页，不操作页面，因此也包含受限页面。返回的 `tabId` 用于后续操作。
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8788/page-control -H "content-type: application/json" --data-raw '[{"action":"navigation","tabId":1,"url":"https://example.com","newPage":true}]'
+```
+
+URL scheme 以 `chrome` 开头的受限页面不能注入、滚动、点击、悬停、填写、选择、按键、等待选择器或文本、生成快照、截图或执行 `history` 的 `back` / `forward`。`tab-list`、`activate`、`navigation`、`history` 的 `reload` 和 `wait` 的 `load` 不注入页面。网上应用店和无痕窗口中的普通网页可以操作。一次 `tab-list` 的结果在 `tabs`，同一请求里多次列出时改为 `tabLists`。服务没连上时，请求立刻失败。列出最后聚焦窗口：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8788/page-control -H "content-type: application/json" --data-raw '[{"action":"tab-list"}]'
+```
 
 ## Cookie 编辑器
 
@@ -94,16 +125,17 @@ pnpm --filter @chrome-ninja/extension build
 
 ## 开发自动刷新
 
-`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；之后构建完成会自动刷新相关界面或整个扩展。开发版的工具栏图标显示 `dev` 徽章，不依赖开发桥是否连接；普通 `pnpm build` 的产物不显示徽章。
+`pnpm dev` 同时启动 `@chrome-ninja/dev-bridge` 与 `vite build --watch`，并设置 `VITE_CHROME_NINJA_DEV_BRIDGE=true`。默认端口 `8787` 被占用时，用 `pnpm dev -- --port 8797` 换端口；构建会带上同一个 `VITE_CHROME_NINJA_DEV_BRIDGE_PORT`。先在 Chrome 扩展管理页将 `apps/extension/dist` 加载为已解压扩展；换端口后重新加载扩展。之后构建完成会自动刷新相关界面或整个扩展。开发版的工具栏图标显示 `dev` 徽章，不依赖开发桥是否连接；普通 `pnpm build` 的产物不显示徽章。
 
 构建使用 CRXJS 2.7.1。开发模式关闭 Rollup 构建缓存，让每轮构建重新生成 Manifest 和动态 Content Script 的文件引用，避免增量构建沿用失效引用而中断刷新；生产构建保留默认缓存设置。
 
 - Popup、Options 的独立入口变化刷新对应界面，公共页面和组件变化刷新两者。
 - Content Script 和录制器、网络监控、视频嗅探变化刷新匹配的网页；Boss 专用脚本仅刷新匹配的 Boss 页面。
 - 后台、Store、Manifest、资源或未分类变化重载整个扩展。
-- 后台首次连接开发桥时，将最近聚焦的普通 Chrome 窗口切到前台，再打开工具栏 Popup；界面或网页刷新后也自动打开，整扩展重载后由新后台连接时打开。同一后台断线重连不会单独触发打开。
+- 构建完成只刷新相关界面、网页或整个扩展，不自动打开工具栏 Popup。
+- 需要 Popup 时，dev-bridge 的 `POST /open-popup`，或目标为 `popup` 的 `/command`、`/execute`，会让后台打开它。已有 Popup 连接时不再抢焦点。
 
-自动刷新会重置运行时界面状态。Popup 失焦时仍按 Chrome 默认行为关闭，浏览器拒绝打开时在后台控制台记录错误。普通 `pnpm build` 不启用开发连接和自动打开。
+自动刷新会重置运行时界面状态。Popup 失焦时仍按 Chrome 默认行为关闭。普通 `pnpm build` 不启用开发连接，也不会打开 Popup。
 
 ## 本地加载扩展
 

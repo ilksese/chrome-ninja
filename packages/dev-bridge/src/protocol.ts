@@ -42,6 +42,11 @@ export type DevBridgeReloadTabsMessage = {
   reason?: string
 }
 
+export type DevBridgeOpenPopupMessage = {
+  type: "dev-bridge:open-popup"
+  requestId: string
+}
+
 export type DevBridgeExecuteJsMessage = {
   type: "dev-bridge:execute-js"
   requestId: string
@@ -66,8 +71,17 @@ export type DevBridgeServerMessage =
   | DevBridgeReloadExtensionMessage
   | DevBridgeReloadClientMessage
   | DevBridgeReloadTabsMessage
+  | DevBridgeOpenPopupMessage
   | DevBridgeExecuteJsMessage
   | DevBridgeCommandMessage
+
+export type DevBridgeOpenPopupResultMessage = {
+  type: "dev-bridge:open-popup:result"
+  requestId: string
+  ok: boolean
+  alreadyOpen?: boolean
+  error?: string
+}
 
 export type DevBridgeExecuteJsResultMessage = {
   type: "dev-bridge:execute-js:result"

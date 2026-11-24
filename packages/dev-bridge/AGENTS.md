@@ -7,12 +7,12 @@
 - It is a Node ESM service with the entry point `src/server/index.mjs`.
 - Extension-side bridge code is exported from `@chrome-ninja/dev-bridge/client`, including `DEV_BRIDGE_ENABLED`, which the extension uses to set its toolbar badge.
 - Shared message types and constants are exported from `@chrome-ninja/dev-bridge/protocol`.
-- Development backgrounds focus the last focused normal Chrome window and open its action popup on their first service connection and after client or tab reloads. Chrome requires an active target window; focus it before passing its ID to `openPopup`. Reconnecting the same background does not open it again.
+- Development backgrounds do not open the toolbar popup on connection or reload. They open it only after `dev-bridge:open-popup`. Chrome requires an active target window; focus the last focused normal window before passing its ID to `openPopup`. If that still reports an inactive window, the service uses `@crowecawcaw/xa11y` to activate the Chrome window and retries once. Do not replace that library with platform shell commands. If a popup client is already connected, do not focus or open again.
 - It is for local development only. Do not design it as a production remote-control surface.
 
 ## Commands
 
-- Start the service with `pnpm --filter @chrome-ninja/dev-bridge dev`.
+- Start the service with `pnpm --filter @chrome-ninja/dev-bridge dev`. Pass `-- --port <port>` or `PORT` when the default port is occupied.
 - There is no package-local lint, typecheck, or test script at the moment.
 - Use `node --check packages/dev-bridge/src/server/index.mjs` from the repo root for a basic syntax check after editing the service.
 - Extension-side protocol changes should be checked with `pnpm --filter @chrome-ninja/extension lint`.
@@ -32,6 +32,7 @@
 ## Command API Shape
 
 - `POST /command` sends `dev-bridge:command` through the connected background service worker.
+- `POST /open-popup` sends `dev-bridge:open-popup` through the connected background service worker. `/command` and `/execute` send it automatically when `target` is `popup` and no popup client is connected.
 - Supported targets are `background`, `content`, `popup`, and `options`.
 - Current supported commands are `storage:get`, `storage:set`, `tabs:query`, `tabs:reload`, and `dom:query`.
 - `storage:get`, `storage:set`, `tabs:query`, and `tabs:reload` execute in the background service worker.

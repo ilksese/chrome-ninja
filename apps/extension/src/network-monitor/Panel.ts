@@ -463,7 +463,7 @@ export default function Panel(
     const content = Column({ style: () => ({ display: open.val ? "flex" : "none", padding: 8 }) })
     const refresh = () => reconcile(content, recordNodes(records, dir.val))
     const element = Surface(
-      { style: { overflow: "hidden", borderRadius: 12 } },
+      { style: { flexShrink: 0, overflow: "hidden", borderRadius: 12 } },
       Row(
         { style: { padding: "8px 12px", background: colors.surface } },
         Button(

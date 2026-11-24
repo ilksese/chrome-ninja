@@ -12,10 +12,12 @@ import { registerVideoSnifferBackground } from "@/video-sniffer/background"
 import { registerNetmonBackground } from "@/network-monitor/background"
 import { registerCookieEditorBackground } from "@/cookie-editor/background"
 import { registerBrowserPresetBackground } from "@/browser-preset/background"
+import { registerPageControlBackground } from "@/page-control/background"
 
 ninjaLog("background runing")
 const openCookieEditor = registerCookieEditorBackground()
 registerBrowserPresetBackground()
+registerPageControlBackground()
 registerBossAntiDetectionBackground()
 registerRecorderBackground()
 registerLoginStateExportBackground()

@@ -2,9 +2,10 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import http from "node:http"
 import https from "node:https"
+import { activateHostChrome } from "./activate-chrome.mjs"
 
 const host = process.env.HOST || "127.0.0.1"
-const port = Number(process.env.PORT || 8787)
+const port = readPort(process.argv.slice(2), process.env.PORT || 8787)
 const certPath = process.env.CHROME_NINJA_DEV_BRIDGE_CERT
 const keyPath = process.env.CHROME_NINJA_DEV_BRIDGE_KEY
 const service = "@chrome-ninja/dev-bridge"
@@ -14,7 +15,7 @@ const executeTimeoutMs = Number(process.env.CHROME_NINJA_DEV_BRIDGE_EXECUTE_TIME
 const inactiveTimeoutMs = 60000
 const pingIntervalMs = 15000
 const maxBodyBytes = 5 * 1024 * 1024
-const features = ["heartbeat", "health", "execute-js", "command", "reload-extension", "reload-client", "reload-tabs"]
+const features = ["heartbeat", "health", "execute-js", "command", "reload-extension", "reload-client", "reload-tabs", "open-popup"]
 const webSocketClients = new Set()
 const pendingExecutes = new Map()
 let backgroundSequence = 0
@@ -70,6 +71,7 @@ const page = `<!doctype html>
         </label>
         <button type="submit">execute</button>
       </form>
+      <button id="open-popup" type="button">open popup</button>
       <pre id="log"></pre>
     </main>
     <script>
@@ -101,6 +103,10 @@ const page = `<!doctype html>
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload)
         })
+        append(JSON.stringify({ status: response.status, body: await response.json() }))
+      })
+      document.querySelector('#open-popup').addEventListener('click', async () => {
+        const response = await fetch('/open-popup', { method: 'POST' })
         append(JSON.stringify({ status: response.status, body: await response.json() }))
       })
       async function refreshHealth() {
@@ -157,6 +163,11 @@ function createServer() {
       return
     }
 
+    if (request.method === "POST" && url.pathname === "/open-popup") {
+      await handleOpenPopup(response)
+      return
+    }
+
     if (request.method !== "GET" || url.pathname !== "/") {
       sendJson(response, 404, { ok: false, error: "Not found" })
       return
@@ -177,6 +188,17 @@ function createServer() {
   }
 
   return http.createServer(handler)
+}
+
+function readPort(args, fallback) {
+  const index = args.indexOf("--port")
+  const raw = index === -1 ? fallback : args[index + 1]
+  const port = Number(raw)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`Invalid port: ${raw || "(missing)"}`)
+    process.exit(1)
+  }
+  return port
 }
 
 async function handleExecute(request, response) {
@@ -202,6 +224,7 @@ async function handleExecute(request, response) {
   }
 
   try {
+    await ensurePopupClient(background, body.target)
     const result = await executeInBackground(background, body)
     sendJson(response, 200, result)
   } catch (error) {
@@ -232,6 +255,7 @@ async function handleCommand(request, response) {
   }
 
   try {
+    await ensurePopupClient(background, body.target)
     const result = await commandInBackground(background, body)
     sendJson(response, 200, result)
   } catch (error) {
@@ -270,6 +294,66 @@ async function handleReload(request, response) {
   sendJson(response, 200, { ok: true, ...reload.log })
 }
 
+async function handleOpenPopup(response) {
+  const background = getLatestBackground()
+  if (!background) {
+    sendJson(response, 503, { ok: false, error: "No background client connected" })
+    return
+  }
+
+  try {
+    const result = await openPopupInBackground(background)
+    logEvent("open-popup", { ok: Boolean(result.ok), alreadyOpen: Boolean(result.alreadyOpen) })
+    sendJson(response, result.ok ? 200 : 503, result)
+  } catch (error) {
+    sendJson(response, error.status || 500, { ok: false, error: error.message || "Failed to open popup" })
+  }
+}
+
+// Popup closes when Chrome loses focus, so reloads do not reopen it.
+// Open it only when a caller targets the popup or asks for it directly.
+async function ensurePopupClient(background, target) {
+  if (target !== "popup") return
+  const result = await openPopupInBackground(background)
+  if (!result.ok) throw httpError(503, result.error || "Failed to open popup")
+}
+
+function openPopupInBackground(background) {
+  const request = sendOpenPopup(background)
+  if (background.clients.popup > 0) return request
+
+  return request.then(async (result) => {
+    if (result.ok || !isInactiveWindowError(result.error)) return result
+    await activateHostChrome()
+    await delay(200)
+    return sendOpenPopup(background)
+  })
+}
+
+function sendOpenPopup(background) {
+  const requestId = crypto.randomUUID()
+  const message = { type: "dev-bridge:open-popup", requestId }
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingExecutes.delete(requestId)
+      reject(httpError(504, "Timed out waiting for popup"))
+    }, executeTimeoutMs)
+
+    pendingExecutes.set(requestId, { resolve, reject, timer, socket: background.socket })
+
+    if (!sendMessage(background, message)) {
+      clearTimeout(timer)
+      pendingExecutes.delete(requestId)
+      reject(httpError(503, "Background client disconnected"))
+    }
+  })
+}
+
+function isInactiveWindowError(error) {
+  return typeof error === "string" && error.includes("inactive window")
+}
+
 function createReloadMessage(body) {
   const target = body?.target || "extension"
   const reason = typeof body?.reason === "string" ? body.reason : "build"
@@ -306,6 +390,12 @@ function createReloadMessage(body) {
   }
 
   return { error: "target must be extension, clients, or tabs" }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 function normalizeStringArray(value) {
@@ -440,6 +530,10 @@ function handleSocketMessage(client, message) {
         command: message.command
       })
       break
+    case "dev-bridge:open-popup:result":
+      completeExecute(message)
+      logEvent("open-popup:result", { requestId: message.requestId, ok: Boolean(message.ok) })
+      break
     default:
       logEvent("message", { type: message.type || "unknown" })
   }
@@ -511,6 +605,7 @@ function completeExecute(message) {
     requestId: message.requestId,
     target: message.target,
     command: message.command,
+    alreadyOpen: message.alreadyOpen,
     result: message.result,
     error: message.error
   })

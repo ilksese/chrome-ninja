@@ -11,6 +11,11 @@
   const ERROR_LIMIT = 2000
   const FORM_ENTRY_LIMIT = 1000
   const xhrStates = new WeakMap()
+  let enabled = false
+
+  window.addEventListener(`${SOURCE}:enabled`, (event) => {
+    enabled = event.detail === true
+  })
 
   function id() {
     return Math.random().toString(36).slice(2)
@@ -26,6 +31,7 @@
   }
 
   function postEvent(request, result) {
+    if (!enabled) return
     try {
       window.postMessage(JSON.stringify({ source: SOURCE, type: "event", ...request, ...result }), "*")
     } catch {
@@ -300,6 +306,7 @@
   const originalXhrAbort = XMLHttpRequest.prototype.abort
 
   const hookedFetch = function (input, init) {
+    if (!enabled) return originalFetch.apply(this, arguments)
     let request
     try {
       request = fetchRequest(input, init)
@@ -404,6 +411,10 @@
     }
     const result = originalXhrOpen.apply(this, arguments)
     previous?.cleanup?.()
+    if (!enabled) {
+      xhrStates.delete(this)
+      return result
+    }
     try {
       xhrStates.set(this, {
         method: String(method).toUpperCase(),
@@ -456,7 +467,7 @@
     const xhr = this
     const state = xhrStates.get(xhr)
     if (state?.active && xhr.readyState === 4 && xhr.status !== 0) state.finish?.("load")
-    if (!state || state.active) return originalXhrSend.apply(xhr, arguments)
+    if (!enabled || !state || state.active) return originalXhrSend.apply(xhr, arguments)
     const start = performance.now()
     let requestBody
     try {

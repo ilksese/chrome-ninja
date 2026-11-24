@@ -1,6 +1,6 @@
 # Chrome Ninja
 
-Chrome Ninja 浏览器扩展中各类用户界面的边界、Cookie 管理与浏览器预设术语。
+Chrome Ninja 浏览器扩展中各类用户界面的边界、Cookie 管理、浏览器预设与页面控制术语。
 
 ## Language
 
@@ -15,6 +15,10 @@ _Avoid_: Content Page、content page ui
 
 **选项页（Options Page）**：
 扩展用于集中管理功能配置的独立页面。
+
+**首页功能列表**：
+扩展弹窗与选项页共用的可排序功能入口列表。
+_Avoid_: 首页列表、设置页面
 
 **Cookie 编辑器**：
 用于查询与管理 Cookie 的功能面板。
@@ -57,3 +61,17 @@ _Avoid_: 恢复默认、取消预设
 **模拟分组**：
 名为 `[ninja] <预设名>` 的 Chrome 标签页分组，承载「该标签页正在模拟」的可见状态。用户把标签页移出该分组即视为退出模拟。
 _Avoid_: 预设分组、调试分组
+
+### 页面控制
+
+**页面控制（Page Control）**：
+用户开启后，由本地服务把外部指令转交给扩展，再由扩展操作网页的能力。
+_Avoid_: 调试桥、dev-bridge、中心服务
+
+**页面控制服务**：
+为页面控制接收外部指令并转交给扩展的本地进程。
+_Avoid_: 中心服务、dev-bridge、调试桥
+
+**受限页面**：
+URL scheme 以 `chrome` 开头的页面。
+_Avoid_: 私有页面、Chrome 私有页面

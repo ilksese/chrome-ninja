@@ -10,9 +10,8 @@ chrome-ninja/
 │   ├── extension/   # Chrome MV3 扩展：Vite + Preact + preact/compat
 │   └── web/         # 插件介绍站点：Vite + Preact + Tailwind v4
 └── packages/
-    ├── types/       # 全局 ChromeNinja 命名空间类型
-    ├── constants/   # 默认配置常量
     ├── dev-bridge/  # 本地开发重载与调试桥
+    ├── page-control/ # 本地页面控制服务
     └── utils/       # 共享小工具
 ```
 
@@ -25,7 +24,7 @@ pnpm dev
 
 根级 `pnpm dev`、`pnpm build`、`pnpm preview` 默认只作用于 `@chrome-ninja/extension`。
 
-开发时先在 Chrome 中将 `apps/extension/dist` 加载为已解压的扩展。`pnpm dev` 启动构建监听和本地 dev-bridge；成功构建后自动刷新相关界面、网页或整个扩展，并打开工具栏 Popup。开发版的工具栏图标显示 `dev` 徽章；生产版不显示徽章，也不自动打开 Popup。详见 [开发桥说明](packages/dev-bridge/README.md#extension-development)。
+开发时先在 Chrome 中将 `apps/extension/dist` 加载为已解压的扩展。`pnpm dev` 启动构建监听和本地 dev-bridge；`8787` 被占用时用 `pnpm dev -- --port 8797`。成功构建后自动刷新相关界面、网页或整个扩展，不自动打开工具栏 Popup。需要时由 dev-bridge 让后台打开。开发版的工具栏图标显示 `dev` 徽章；生产版不显示徽章，也不打开 Popup。详见 [开发桥说明](packages/dev-bridge/README.md#extension-development)。
 
 extension 的扩展弹窗与选项页使用 Preact、`preact/compat` 和 `@preact/preset-vite`；Base UI、`react-router-dom`、`react-hook-form` 通过 compat 工作。网页内界面使用 VanJS 和共享浅色主题组件，直接挂载到网页 DOM。web 站点使用 Preact。
 

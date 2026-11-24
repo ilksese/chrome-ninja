@@ -38,12 +38,6 @@ const recorderScriptFiles = async () => {
   )
 }
 
-const netmonScriptFiles = async () => {
-  return await getAllFiles("src/network-monitor").then((files) =>
-    files.filter((file) => file.endsWith(".css") || file.endsWith(".js"))
-  )
-}
-
 export default {
   name: env.mode === "staging" ? `[INTERNAL] ${name}` : displayName || name,
   description,
@@ -113,11 +107,20 @@ export default {
     },
     {
       all_frames: true,
+      js: ["src/network-monitor/netmon-hook.iife.js"],
+      match_about_blank: true,
+      match_origin_as_fallback: true,
+      matches: ["<all_urls>"],
+      run_at: "document_start",
+      world: "MAIN"
+    },
+    {
+      all_frames: true,
       js: ["src/network-monitor/netmon-content.ts"],
       match_about_blank: true,
       match_origin_as_fallback: true,
       matches: ["<all_urls>"],
-      run_at: "document_idle"
+      run_at: "document_start"
     }
   ],
   // Full options page
@@ -130,12 +133,12 @@ export default {
     extension_pages: "script-src 'self'; object-src 'self'; connect-src 'self' http: https: ws: wss:"
   },
   offline_enabled: true,
-  host_permissions: ["<all_urls>"],
-  permissions: ["contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite", "debugger", "tabGroups"],
+  host_permissions: ["<all_urls>", "http://127.0.0.1/*"],
+  permissions: ["alarms", "contextMenus", "storage", "tabs", "background", "scripting", "activeTab", "declarativeNetRequest", "webNavigation", "cookies", "downloads", "webRequest", "clipboardWrite", "debugger", "tabGroups"],
   web_accessible_resources: [
     {
       matches: ["<all_urls>"],
-      resources: [...(await contentScriptFiles()), ...(await recorderScriptFiles()), ...(await netmonScriptFiles()), "src/user-agent/boss-anti-detection.js"]
+      resources: [...(await contentScriptFiles()), ...(await recorderScriptFiles()), "src/user-agent/boss-anti-detection.js"]
     }
   ],
   icons: {

@@ -18,6 +18,9 @@ const validationSchema = v.object({
   recorder: v.object({
     enabled: v.boolean()
   }),
+  pageControl: v.object({
+    enabled: v.boolean()
+  }),
   videoSniffer: v.object({
     enabled: v.boolean()
   }),

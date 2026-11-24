@@ -1,0 +1,15 @@
+{
+  "name": "@chrome-ninja/page-control",
+  "version": "0.1.0",
+  "description": "Local page control service for the Chrome Ninja extension",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server.mjs"
+  },
+  "scripts": {
+    "dev": "node src/server/index.mjs",
+    "start": "node src/server/index.mjs"
+  },
+  "files": ["src"]
+}

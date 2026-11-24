@@ -8,7 +8,8 @@ const extensionRoot = fileURLToPath(new URL("..", import.meta.url))
 const srcRoot = fileURLToPath(new URL("../src", import.meta.url))
 const isWindows = process.platform === "win32"
 const pnpm = isWindows ? "pnpm.cmd" : "pnpm"
-const devBridgePort = process.env.PORT || "8787"
+const devBridgePort = readPort(process.argv.slice(2), process.env.PORT || "8787")
+process.env.PORT = devBridgePort
 const reloadUrls = process.env.CHROME_NINJA_DEV_BRIDGE_RELOAD_URL ? [process.env.CHROME_NINJA_DEV_BRIDGE_RELOAD_URL] : [`https://127.0.0.1:${devBridgePort}/reload`, `http://127.0.0.1:${devBridgePort}/reload`]
 const allContentScriptMatches = ["*://*/*"]
 const bossContentScriptMatches = ["*://*.zhipin.com/*", "*://*.bosszhipin.com/*"]
@@ -30,7 +31,13 @@ const watchers = startChangeWatchers()
 const children = [
   start("dev-bridge", ["--filter", "@chrome-ninja/dev-bridge", "dev"], { prefix: processPrefixes.devBridge }),
   start("extension", ["--filter", "@chrome-ninja/extension", "dev:build"], {
-    env: { VITE_CHROME_NINJA_DEV_BRIDGE: "true" },
+    env: {
+      VITE_CHROME_NINJA_DEV_BRIDGE: "true",
+      VITE_CHROME_NINJA_DEV_BRIDGE_PORT: devBridgePort,
+      ...(process.env.VITE_CHROME_NINJA_PAGE_CONTROL_PORT
+        ? { VITE_CHROME_NINJA_PAGE_CONTROL_PORT: process.env.VITE_CHROME_NINJA_PAGE_CONTROL_PORT }
+        : {})
+    },
     onStdout: observeExtensionBuildOutput,
     onStderr: observeExtensionBuildOutput,
     prefix: processPrefixes.extension
@@ -82,6 +89,17 @@ function start(name, args, options = {}) {
   })
 
   return { name, process: child }
+}
+
+function readPort(args, fallback) {
+  const index = args.indexOf("--port")
+  const raw = index === -1 ? fallback : args[index + 1]
+  const port = Number(raw)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`Invalid port: ${raw || "(missing)"}`)
+    process.exit(1)
+  }
+  return String(port)
 }
 
 function createPrefixedWriter(stream, prefix) {

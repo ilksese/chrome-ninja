@@ -11,8 +11,6 @@ import { loadPanelLayout } from "@/content-ui/panel-geometry"
 import Panel from "./Panel"
 import { NETMON_POST_SOURCE, PANEL_HOST_ATTR } from "./types"
 
-const HOOK_URL = "src/network-monitor/hook.js"
-
 const isTopFrame = window === window.top
 
 let enabled = false
@@ -20,15 +18,6 @@ let panel: ReturnType<typeof mountContentUI> | null = null
 let panelView: ReturnType<typeof Panel> | null = null
 let mounting: Promise<void> | null = null
 let latestState: NetmonTabState | null = null
-let hookInjected = false
-
-function injectHook(): void {
-  if (hookInjected) return
-  const script = document.createElement("script")
-  script.src = chrome.runtime.getURL(HOOK_URL)
-  ;(document.head || document.documentElement).append(script)
-  hookInjected = true
-}
 
 function mountPanel(state: NetmonTabState) {
   if (!isTopFrame) return
@@ -75,13 +64,12 @@ function unmountPanel() {
 
 function setEnabled(next: boolean) {
   enabled = next
-  if (enabled) {
-    injectHook()
-    window.addEventListener("message", onWindowMessage)
-  } else {
-    window.removeEventListener("message", onWindowMessage)
-    unmountPanel()
-  }
+  syncHookEnabled()
+  if (!enabled) unmountPanel()
+}
+
+function syncHookEnabled() {
+  window.dispatchEvent(new CustomEvent(`${NETMON_POST_SOURCE}:enabled`, { detail: enabled }))
 }
 
 function parseHeaders(raw: unknown): NetmonHookEventPayload["requestHeaders"] {
@@ -209,10 +197,18 @@ function forwardEvent(payload: NetmonHookEventPayload) {
 }
 
 function onWindowMessage(event: MessageEvent<unknown>) {
-  if (event.source !== window || typeof event.data !== "string") return
-  const payload = parseEvent(event.data)
-  if (payload) forwardEvent(payload)
+  if (event.source !== window) return
+  const data = event.data
+  if (typeof data === "string") {
+    if (!enabled) return
+    const payload = parseEvent(data)
+    if (payload) forwardEvent(payload)
+  } else if (data && typeof data === "object" && "source" in data && "type" in data) {
+    if (data.source === NETMON_POST_SOURCE && data.type === "ready") syncHookEnabled()
+  }
 }
+
+window.addEventListener("message", onWindowMessage)
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target !== "netmon-frame") return false
@@ -230,8 +226,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 window.addEventListener("pagehide", (event) => {
   if (!event.persisted) {
-    enabled = false
-    unmountPanel()
+    setEnabled(false)
+    window.removeEventListener("message", onWindowMessage)
   }
 })
 
