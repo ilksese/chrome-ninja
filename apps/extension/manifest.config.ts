@@ -47,6 +47,15 @@ export default {
   version_name: version,
   manifest_version: 3,
   // key: '',
+  commands: {
+    "open-shortcut-panel": {
+      suggested_key: {
+        default: "Ctrl+Shift+K",
+        mac: "Command+Shift+K"
+      },
+      description: "打开快捷面板"
+    }
+  },
   action: {
     default_popup: "index.html",
     default_icon: {

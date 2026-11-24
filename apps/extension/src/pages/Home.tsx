@@ -10,6 +10,7 @@ import CookieEditor from "@components/settings/CookieEditor"
 import LoginStateExport from "@components/settings/LoginStateExport"
 import QrPanel from "@/qr/panel"
 import { optionsAtom } from "@/store/options"
+import { subscribeShortcutIntent, takeStagedShortcutIntent, type ShortcutPopupIntent } from "@/shortcut-panel/popup-bridge"
 import type { TranslateOptionsType, UserAgentType } from "@/types"
 import { getUserAgentOption, USER_AGENT_OPTIONS } from "@/user-agent"
 import NetworkMonitorToggle from "@/components/NetworkMonitorToggle"
@@ -291,6 +292,37 @@ const Home = ({ layout }: HomeProps) => {
     setIsTranslateOpen(false)
     requestAnimationFrame(() => translateTriggerRef.current?.focus())
   }
+
+  const openUserAgentDialogRef = useRef(openUserAgentDialog)
+  const openTranslateDialogRef = useRef(openTranslateDialog)
+  const simulatingRef = useRef(simulatingPreset)
+  openUserAgentDialogRef.current = openUserAgentDialog
+  openTranslateDialogRef.current = openTranslateDialog
+  simulatingRef.current = simulatingPreset
+
+  useEffect(() => {
+    if (isOptions) return
+    const apply = (intent: ShortcutPopupIntent) => {
+      if (intent.action === "user-agent") {
+        if (simulatingRef.current) return
+        openUserAgentDialogRef.current()
+        return
+      }
+      if (intent.action === "qr") {
+        setQrInitialText(intent.text ?? "")
+        setIsQrOpen(true)
+        return
+      }
+      if (intent.action === "translate") openTranslateDialogRef.current()
+      if (intent.action === "login-state") setIsLoginStateOpen(true)
+    }
+    const pending = takeStagedShortcutIntent()
+    if (pending) apply(pending)
+    return subscribeShortcutIntent((intent) => {
+      apply(intent)
+      takeStagedShortcutIntent()
+    })
+  }, [isOptions])
 
   const updateTranslateDraft = (patch: Partial<TranslateOptionsType>, invalidateTest = false) => {
     setDraftTranslate((draft) => ({ ...draft, ...patch }))

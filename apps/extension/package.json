@@ -20,6 +20,7 @@
     "@fontsource/roboto": "5.1.0",
     "@hookform/resolvers": "5.8.0",
     "clsx": "2.1.1",
+    "fuzzysort": "4.0.2",
     "jotai": "2.10.3",
     "normalize.css": "8.0.1",
     "preact": "10.29.8",

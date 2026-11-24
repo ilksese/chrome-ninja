@@ -13,9 +13,11 @@ import { registerNetmonBackground } from "@/network-monitor/background"
 import { registerCookieEditorBackground } from "@/cookie-editor/background"
 import { registerBrowserPresetBackground } from "@/browser-preset/background"
 import { registerPageControlBackground } from "@/page-control/background"
+import { registerShortcutPanelBackground } from "@/shortcut-panel/background"
 
 ninjaLog("background runing")
 const openCookieEditor = registerCookieEditorBackground()
+registerShortcutPanelBackground(openCookieEditor)
 registerBrowserPresetBackground()
 registerPageControlBackground()
 registerBossAntiDetectionBackground()

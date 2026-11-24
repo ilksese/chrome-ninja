@@ -1,8 +1,9 @@
 import type { ComponentChildren } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import Sortable from "sortablejs"
+import { HOME_FEATURE_ORDER_KEY } from "@/home-feature-order"
 
-const ORDER_KEY = "homeFeatureOrder"
+const ORDER_KEY = HOME_FEATURE_ORDER_KEY
 
 type HomeFeature = {
   id: string
